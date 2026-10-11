@@ -93,8 +93,10 @@ const map = new MlMap({
   // via een gedeelde link: centreer op het vertrekpunt
   center: location.hash ? [origin.lon, origin.lat] : [5.3, 52.2],
   zoom: location.hash ? 9 : 7,
-  minZoom: 6,
-  maxBounds: [[1.5, 49.8], [9.2, 54.4]],
+  minZoom: 5,
+  // ruim om NL heen: maxBounds geldt voor het hele beeld, dus een krap kader
+  // blokkeert op brede schermen het uitzoomen tot heel Nederland
+  maxBounds: [[-4, 47.5], [14.5, 56.5]],
   attributionControl: { compact: true, customAttribution: "OV-data: NDOV Loket / OVapi" },
 });
 map.addControl(new NavigationControl({ showCompass: false }), "top-right");
