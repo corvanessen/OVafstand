@@ -1,0 +1,8 @@
+# ruwe en tussentijdse data (GTFS ~260 MB); opnieuw te maken met pipeline/
+/data/
+# prototype-kaarten uit pipeline/heatmap.py
+/output/
+__pycache__/
+*.pyc
+node_modules/
+web/dist/
