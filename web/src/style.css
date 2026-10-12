@@ -101,6 +101,10 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.4; }
 .loading .status::before { content: "⟳ "; display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* klikken kiest een vertrekpunt: kruisje in plaats van het sleephandje van MapLibre */
+#map .maplibregl-canvas-container.maplibregl-interactive { cursor: crosshair; }
+#map .maplibregl-canvas-container.maplibregl-interactive:active { cursor: grabbing; }
+
 /* ---------- tooltip / popup ---------- */
 #tooltip {
   position: absolute; top: 0; left: 0;

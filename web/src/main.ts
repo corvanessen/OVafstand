@@ -136,6 +136,7 @@ const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "modu
 const send = (m: Request) => worker.postMessage(m);
 let workerReady = false;
 let mapReady = false;
+let hasResult = false; // de worker kan pas een route uitleggen na de eerste berekening
 let computeId = 0;
 let busy = false;
 let pending = false;
@@ -156,11 +157,14 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
       `${m.reached.toLocaleString("nl")} haltes binnen ${params.tMaxMin / 60} uur · ` +
       `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms`;
     $("app").classList.remove("loading");
+    hasResult = true;
+    flushExplain();
     if (pending) compute();
   } else if (m.type === "explain") {
     onExplain(m);
   } else if (m.type === "error") {
     busy = false;
+    explainBusy = false;
     $("status").textContent = "Fout: " + m.message;
   }
 };
@@ -199,7 +203,7 @@ function requestExplain(lat: number, lon: number, via: "hover" | "popup") {
 
 /** hooguit één verzoek tegelijk; tussentijdse muisposities worden overgeslagen */
 function flushExplain() {
-  if (explainBusy || !workerReady || !explainTarget || explainTarget === explainSent) return;
+  if (explainBusy || !hasResult || !explainTarget || explainTarget === explainSent) return;
   explainBusy = true;
   explainSent = explainTarget;
   send({ type: "explain", id: ++explainId, lat: explainTarget.lat, lon: explainTarget.lon });
@@ -241,6 +245,7 @@ function onExplain(m: Extract<Response, { type: "explain" }>) {
     if (explainTarget?.via === "hover") return;
   }
   if (t?.via === "hover") {
+    if (lastPointerType === "touch") return;
     tooltip.innerHTML = explainHtml(m);
     tooltip.hidden = false;
   } else if (t?.via === "popup") {
@@ -256,7 +261,17 @@ function onExplain(m: Extract<Response, { type: "explain" }>) {
   }
 }
 
+// na een tik stuurt de browser een nagebootste mousemove; die mag geen hover-tooltip
+// openen, anders staat dezelfde reisinformatie dubbel in beeld (tooltip én popup)
+let lastPointerType = "mouse";
+map.getCanvasContainer().addEventListener("pointerdown", (ev) => (lastPointerType = ev.pointerType), true);
+map.getCanvasContainer().addEventListener("pointermove", (ev) => (lastPointerType = ev.pointerType), true);
+
 map.on("mousemove", (e) => {
+  if (lastPointerType === "touch") {
+    tooltip.hidden = true;
+    return;
+  }
   tooltip.style.transform = `translate(${e.point.x + 16}px, ${e.point.y + 16}px)`;
   requestExplain(e.lngLat.lat, e.lngLat.lng, "hover");
 });
