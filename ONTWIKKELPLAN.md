@@ -164,7 +164,7 @@ OSM  ─┴─> fietsrouting ─> fietstabellen per tegel ──>    bike/{z}/{x
 | **3. Realistisch fietsen** | Fietstabellen via OSRM, tegels opslaan, water en veerboten goed meenemen | Correcte randen bij water, nauwkeurig dichtbij |
 | **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". | Tweede modus |
 | **5. Grensregio** | België en een uitsnede van Duitsland samenvoegen in de GTFS (stop-ID's laten matchen bij grensstations) | Kaart tot ongeveer 50 km over de grens |
-| **6. Extra's** | Twee locaties vergelijken (bijv. "waar is het voor ons allebei < 45 min?"), deelbare URL, instellingen (fietssnelheid, overstapstraf, alleen trein), mobiele weergave | Afwerking |
+| **6. Gebruikers en bereik** | Bezoekers meten, deellink met instellingen, Open Graph, uitleg, mijn locatie, bottom sheet op mobiel, dag-animatie (uurmodel), twee vertrekpunten vergelijken. Later: overstapstraf, alleen trein. Zie "Fase 6 in detail". | Begrijpelijk en deelbaar voor bezoekers zonder voorkennis |
 
 ### Risico's
 
@@ -234,3 +234,121 @@ Fase 3, realistisch fietsen:
 - Een OSRM-fietsprofiel op een OSM-extract van NL.
 - Daarmee per halteplek de fietstijden naar de cellen binnen 5 km berekenen, opgeslagen in tegels.
 - Eerst meten hoeveel het hemelsbrede model in de praktijk afwijkt.
+
+## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
+
+Fase 6 maakt de site begrijpelijk en deelbaar voor bezoekers die niets van GTFS of Dijkstra weten. Het rekenmodel blijft zoals het is.
+
+**Uitgangspunten:**
+- Geen eigen backend. Alles blijft statisch op GitHub Pages.
+- Geen cookies en geen persoonsgegevens, dus geen cookiebanner.
+- De eerste kaart staat op 4G binnen enkele seconden.
+- Bestaande deellinks (`#lat,lon,naam`) blijven werken.
+- Het touchpatroon (tikken → infobox → "Vertrek vanaf hier") blijft.
+
+### 6.1 Snelle winst (ongeveer twee avonden)
+
+- **Instellingen in de deellink.** Optionele sleutels na het vertrekpunt, bijvoorbeeld `#52.08940,5.11000,Utrecht%20Centraal&w=0.5&v=15&b=5&d=15&t=180`. De sleutels zijn `w` (wachtfactor), `v` (fietssnelheid), `b` (bikeMaxKm), `d` (directMaxKm) en `t` (tMaxMin).
+  - Alleen afwijkingen van de standaard komen in de URL.
+  - `readHash()` leest eerst het oude deel en daarna de sleutels. Onbekende of ongeldige waarden worden genegeerd.
+  - Elke schuif werkt de hash bij via `history.replaceState`.
+  - Let op: de huidige regex in `main.ts` neemt alles na de tweede komma als naam. De naam moet dus ophouden bij de eerste `&`.
+- **Deelknop.** Op mobiel `navigator.share()`, op desktop kopiëren met de melding "Link gekopieerd".
+- **Open Graph en favicon.** Voeg `og:title`, `og:description`, `og:image` (`og.png`, 1200 × 630, heatmap vanaf Utrecht C) en `twitter:card` toe, plus een SVG-favicon met kleurbanden. De preview is voor elke link hetzelfde, want crawlers lezen de hash niet.
+- **Uitleg.**
+  - Eén zin onder de titel.
+  - Een blok "Hoe werkt dit?" met de kleuren, de wachttijd en de beperkingen.
+  - Gewone woorden voor de modellen: "Optimistisch (geen wachttijd)" en "Realistisch (met gemiddelde wachttijd)".
+- **Mijn locatie.** Een knop die `navigator.geolocation` (of MapLibre `GeolocateControl`) gebruikt en dan `setOrigin()` aanroept. Bij weigeren of een positie buiten NL verschijnt een melding.
+- **Voorbeeldchips** onder de zoekbalk: Amsterdam C, Groningen, Middelburg, Terschelling, Winterswijk. Elke chip is een gewone deellink.
+
+### 6.2 Bezoekers meten
+
+GoatCounter: gratis voor niet-commerciële sites en zonder cookies. Alternatief is Cloudflare Web Analytics, met minder mogelijkheden voor eigen gebeurtenissen.
+1. Maak een account met de code `ovafstand`.
+2. Zet in `index.html`: `<script data-goatcounter="https://ovafstand.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>`.
+3. Tel eigen gebeurtenissen met `window.goatcounter?.count({ path, event: true })`:
+   - `vertrekpunt-gekozen` (klik, zoeken, locatie of chip);
+   - `gedeeld`;
+   - later `animatie-gestart` en `vergelijken-gestart`.
+4. Zet het tellen uit op `localhost`.
+
+Stuur alleen het type gebeurtenis mee, nooit coördinaten of adressen.
+
+### 6.3 Smartphone
+
+- **Bottom sheet.** Tot 640 px wordt het paneel een sheet onderaan:
+  - ingeklapt (±72 px): het vertrekpunt en de legenda;
+  - half (±45%): de zoekbalk, de chips en de deelknop;
+  - vol (±85%): de instellingen en de uitleg.
+
+  Vegen of tikken op de greep wisselt de stand. Focus op de zoekbalk zet de sheet op vol. Na het kiezen van een vertrekpunt klapt hij in.
+- **Infobox in de sheet.** De popup valt aan de rand soms buiten beeld. Op mobiel staat de reisinfo daarom in de sheet (half), met een grote knop "Vertrek vanaf hier". Op de kaart blijft alleen een markering.
+- **Kleine punten:**
+  - tikdoelen van minstens 44 × 44 px;
+  - geen zoomknoppen op touch;
+  - `env(safe-area-inset-*)` met `viewport-fit=cover`;
+  - de legenda altijd zichtbaar;
+  - de statusregel op mobiel verbergen.
+- **Testen** op een iPhone (Safari) en een Android-toestel (Chrome), staand en liggend. `OffscreenCanvas` werkt pas vanaf iOS 16.4. Oudere toestellen moeten een duidelijke melding krijgen.
+
+### 6.4 Animatie: een werkdag doorlopen
+
+Begin met een uurmodel: per uur een statische graaf. Nog geen volledige dienstregelingsrouter. Het huidige model volstaat niet, om twee redenen:
+- het venster 07–19 u is 's avonds te gunstig;
+- de wachttijdgrens van 30 min maakt een nachtbus die eens per twee uur rijdt te aantrekkelijk.
+
+- **Pipeline.** `build_graph.py` berekent per instapkant en per uur (24 vakken, of 48 halve uren) het interval en de kortste rijtijd. Zonder dienst is de waarde 65535. Het resultaat is een apart bestand `hours.bin` (±82.500 × 24 × 2 B ≈ 4 MB). Dat wordt pas geladen bij het starten van de animatie.
+- **Wachttijd.** ½ interval zonder grens van 30 min. Een kant zonder dienst is dicht.
+- **Over het uur heen.** De kosten van een instapkant hangen af van `vertrektijd + label`, niet van het vertrekuur. Dat is een kleine aanpassing in `router.ts`.
+- **Afspelen:**
+  - een tijdschuif van 00:00 tot 24:00 met een afspeelknop en een grote klok;
+  - de worker rekent twee frames vooruit (±300 ms per frame);
+  - een overgang van ±400 ms via twee `ImageSource`-lagen;
+  - frames niet bewaren: 48 stuks kosten honderden MB;
+  - onder de schuif een lijndiagram met het oppervlak dat per uur binnen 1 uur bereikbaar is.
+- **Later.** Fase 4 (CSA) kan dezelfde schuif gebruiken. Neem dan per frame de mediaan over 12 vertrekmomenten, zodat het beeld niet springt.
+- **Open punten:**
+  - alleen werkdag, of ook zaterdag en zondag?
+  - een demo vanaf Utrecht op de voorpagina?
+  - een video exporteren met `MediaRecorder`?
+
+### 6.5 Twee vertrekpunten vergelijken
+
+Technisch is het steeds hetzelfde: twee Dijkstra-runs, twee rasters met minuten per cel en een rekensom per cel. Welke som je kiest, hangt af van de vraag van de bezoeker.
+
+| Vraag | Per cel | Kleur | Voorbeeld |
+|---|---|---|---|
+| Waar zijn we allebei snel? | max(A, B) | huidige schaal | samen wonen, elk een eigen werk |
+| Waar is de totale reistijd het laagst? | A + B | huidige schaal × 2 | twee forenzen |
+| Wie is er dichterbij? | A − B | tweekleurig rond 0 | twee huizen of banen vergelijken |
+| Waar spreken we af? | max(A, B), beste 5% | markering | afspreken in een andere stad |
+
+**Voorstel:**
+- Een knop "+ Vergelijk met…" voor punt B.
+- Een schakelaar met twee standen: "Allebei snel" (max) en "Wie is dichterbij" (verschil).
+- De tooltip toont beide routes, A en B elk in een eigen kleur.
+- Deellink met `&m=max` of `&m=diff`. Gebruik voor punt B een eigen sleutel, bijvoorbeeld `&p2=52.51,6.09,Zwolle`. Het oorspronkelijke plan (daar "fase 5" genoemd) stelde `&b=` voor, maar die sleutel is al bikeMaxKm.
+
+**Techniek:**
+- `raster.ts` moet de minuten per cel bewaren als `Uint16Array` (±3 MB per raster). Pas daarna volgt de kleuring.
+- A wordt gecachet, zodat slepen met B alleen B opnieuw rekent.
+- De rekentijd is ±300 ms als één punt verandert en ±600 ms als beide veranderen.
+
+**Open vragen:**
+- Welke vraag komt eerst?
+- Ook drie of meer punten? Dan werkt max nog, het verschil niet.
+- Combineren met de animatie? Pas na 6.4.
+
+### 6.6 Volgorde
+
+Eerst meten en delen, dan de grote features.
+1. Bezoekers meten (6.2): een half uur, als nulmeting.
+2. Snelle winst (6.1).
+3. Smartphone (6.3).
+4. Animatie (6.4): eerst het uurmodel, dan de tijdschuif.
+5. Vergelijken (6.5).
+
+Stap 4 en 5 kunnen in beide volgordes.
+
+**Open vraag:** een eigen domeinnaam? Dat kan met GitHub Pages.
