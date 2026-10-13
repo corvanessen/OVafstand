@@ -1,8 +1,10 @@
 """Fase 3, stap 1: hoe goed klopt 'hemelsbreed × 1,3' voor fietsen?
 
-Gebruik:  python pipeline/bike_check.py [aantal_haltes] [YYYYMMDD] [--offline]
+Gebruik:  python pipeline/bike_check.py [aantal_haltes] [YYYYMMDD] [--offline] [--local]
 
 Met --offline wordt niets opgehaald en alleen de cache geanalyseerd.
+Met --local gaan de verzoeken naar de eigen server uit osrm_setup.sh (localhost:5000),
+zonder wachttijd en met een eigen cache.
 
 Trekt een steekproef van halteplekken en per halte willekeurige bestemmingen
 (gelijkmatig over het oppervlak, dus zoals rastercellen) binnen 5 km, plus een paar
@@ -28,13 +30,16 @@ from scipy.spatial import cKDTree
 
 ROOT = Path(__file__).resolve().parent.parent
 OFFLINE = "--offline" in sys.argv  # alleen de cache gebruiken, niets ophalen
-ARGS = [a for a in sys.argv[1:] if a != "--offline"]
+LOCAL = "--local" in sys.argv      # eigen server uit osrm_setup.sh in plaats van de publieke
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 N_STOPS = int(ARGS[0]) if len(ARGS) > 0 else 300
 DATE = ARGS[1] if len(ARGS) > 1 else "20261110"
-CACHE = ROOT / "data" / "bike_check" / "osrm"
+CACHE = ROOT / "data" / "bike_check" / ("osrm_local" if LOCAL else "osrm")
 OUT = ROOT / "output"
+SUFFIX = "_local" if LOCAL else ""
 
-OSRM = "https://routing.openstreetmap.de/routed-bike/table/v1/driving/"
+OSRM = ("http://localhost:5000/table/v1/bike/" if LOCAL
+        else "https://routing.openstreetmap.de/routed-bike/table/v1/driving/")
 N_NEAR, R_NEAR = 40, 5.0      # bestemmingen binnen 5 km (fietsen van halte naar cel)
 N_FAR, R_FAR = 10, 15.0       # 5–15 km (fietsen naar de eerste halte)
 DETOUR, KMH = 1.3, 15.0       # het huidige model
@@ -111,7 +116,8 @@ def collect():
                 online = False
                 continue
             f.write_text(json.dumps({k: res[k] for k in ("code", "distances", "durations", "sources", "destinations")}))
-            time.sleep(max(0.0, 1.0 - (time.time() - t0)))
+            if not LOCAL:  # publieke server: hooguit 1 verzoek per seconde
+                time.sleep(max(0.0, 1.0 - (time.time() - t0)))
             if i % 25 == 0:
                 print(f"{i}/{N_STOPS} {names[s]}")
         if res["code"] != "Ok":
@@ -128,7 +134,7 @@ def collect():
                 snap_src=src_snap, snap_dst=res["destinations"][j + 1]["distance"],
             ))
     df = pd.DataFrame(rows)
-    df.to_pickle(CACHE.parent / "pairs.pkl")
+    df.to_pickle(CACHE.parent / f"pairs{SUFFIX}.pkl")
     return df
 
 
@@ -190,8 +196,8 @@ def plot(df, d, off):
     ax.set_ylabel("fietstijd echte route − model (min, beide 15 km/u)")
     ax.set_title("fout van hemelsbreed × 1,3")
     fig.tight_layout()
-    fig.savefig(OUT / "bike_check.png", dpi=110)
-    print(f"\nkaart: {OUT / 'bike_check.png'}")
+    fig.savefig(OUT / f"bike_check{SUFFIX}.png", dpi=110)
+    print(f"\nkaart: {OUT / f'bike_check{SUFFIX}.png'}")
 
 
 if __name__ == "__main__":

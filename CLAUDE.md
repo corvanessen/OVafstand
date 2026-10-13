@@ -6,12 +6,19 @@ Website met een kaart van NL. De heatmap toont de reistijd met OV plus fiets van
 - Communicatie, commentaar en UI-teksten zijn in het **Nederlands**.
 
 ## Stand van zaken
-Fase 0, 1 en 2 zijn klaar. Volgende stap: fase 3, realistisch fietsen via OSRM en OSM (zie het plan).
+Fase 0, 1 en 2 zijn klaar. Fase 3 (realistisch fietsen) loopt:
+- de meting van hemelsbreed × 1,3 is klaar;
+- een eigen OSRM-server draait in WSL.
+
+Volgende stap: compacte opslag van de fietstijden uitproberen in één regio (zie het plan).
+
+**Afspraak:** na elke afgeronde stap de resultaten en de volgende stap bijwerken in ONTWIKKELPLAN.md, en de stand van zaken hier.
 
 ## Omgeving (Windows)
 - Python 3.13 werkt alleen via **PowerShell** (`python ...`). In Git Bash geeft `python` "Permission denied" (WindowsApps-stub). Beschikbaar: pandas, numpy, scipy, matplotlib. Geen polars of pyarrow, dus tussenbestanden zijn `.pkl` en `.npz`.
 - Node 24. Web-commando's: `npm --prefix web run dev | build`, typecheck `npx tsc --noEmit` (in `web/`).
 - **Let op bij het bewerken van bestanden via PowerShell** (`Get-Content`/`Set-Content` zonder `-Encoding utf8`): UTF-8 raakt dan dubbel gecodeerd ("…" wordt "â€¦"). Gebruik de Edit-tool of Node.
+- **WSL2 (Ubuntu 26.04) met `docker.io`** voor OSRM, zonder sudo. Vanuit PowerShell: `wsl -e bash -lc "..."`, en gebruik `/usr/bin/docker` (de `docker` van Docker Desktop in het PATH werkt niet). De fietsserver staat op `localhost:5000` (`pipeline/osrm_setup.sh start`).
 - `.claude/launch.json` bevat de previewservers `web` (dev, :5173) en `web-build` (preview, :4173).
 
 ## Datapijplijn (`pipeline/`)

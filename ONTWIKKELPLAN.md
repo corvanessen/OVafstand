@@ -231,9 +231,10 @@ Scripts in `pipeline/`: `extract_day.py` → `stats.py` → `build_graph.py` →
 ### Volgende concrete stap
 
 Fase 3, realistisch fietsen:
-- Een OSRM-fietsprofiel op een OSM-extract van NL.
-- Daarmee per halteplek de fietstijden naar de cellen binnen 5 km berekenen, opgeslagen in tegels.
-- Eerst meten hoeveel het hemelsbrede model in de praktijk afwijkt.
+- ~~Eerst meten hoeveel het hemelsbrede model in de praktijk afwijkt.~~ Klaar, zie stap 1 hieronder.
+- ~~Een OSRM-fietsprofiel op een OSM-extract van NL.~~ Klaar, zie stap 2.
+- **Nu:** in één regio (bijvoorbeeld Zeeland) uitproberen hoe compact de fietstijden per halte naar de cellen binnen 5 km kunnen. Een volledige tabel is ±34.000 × ±1.250 ≈ 43 miljoen waarden, te veel voor de browser. Omdat ±85% al binnen 5 min klopt, ligt het voor de hand alleen correcties op te slaan.
+- Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -265,6 +266,19 @@ Fout = fietstijd over de echte route min de modeltijd, beide bij 15 km/u. Positi
   - Maasvlakte: +46 min;
   - Hardinxveld aan de Merwede: +44 min.
 - **Gevolg voor fase 3.** Een andere vaste factor levert niets op. De winst zit alleen bij barrières. Dat rechtvaardigt echte fietstijden per halte via OSRM, maar het meeste gebied klopt nu al binnen 5 min.
+
+### Resultaten fase 3, stap 2: eigen OSRM-server (13 okt 2026)
+
+- **Omgeving.** WSL2 met Ubuntu 26.04 en `docker.io`. `osrm-backend` zit niet in apt. `C:\Users\corva\.wslconfig` geeft WSL 10 GB geheugen en 16 GB swap.
+- **Opzet.** `pipeline/osrm_setup.sh` (in Ubuntu) downloadt `netherlands-latest.osm.pbf` (1,4 GB) naar `~/osrm`. Daarna draait OSRM v5.27.1 met `bicycle.lua` en MLD, en start de container `osrm-fiets` op `localhost:5000`. Na een herstart is alleen `bash pipeline/osrm_setup.sh start` nodig.
+- **Verwerking.** Ongeveer 6 minuten, met een piek van 2,6 GB geheugen. De graaf heeft 10,0 miljoen knopen en 38,8 miljoen kanten.
+- **Controle.** `bike_check.py --local` op dezelfde 300 haltes en 15.000 paren duurde ongeveer een minuut.
+  - De routeafstand lokaal/publiek is in de mediaan 1,00 (p2–p98: 0,84–1,10).
+  - Mediane omrijfactor 1,34; de best passende factor is 1,32.
+  - Het model wijkt bij 12,9% meer dan 5 min af en bij 4,5% meer dan 10 min.
+  - De ergste omwegen zijn dezelfde routes als bij de publieke server.
+  - OSRM rekent lokaal met 13,7 km/u, publiek met 14,2 km/u. Dat maakt niet uit, want we rekenen met onze eigen snelheid.
+- **Grens.** Lokaal valt 29% van de bestemmingen af (meer dan 250 m van een weg), publiek 16%. Het verschil zit bij Belgische haltes uit de GTFS (Maasmechelen, Hasselt, Beerse) en bij bestemmingen over de grens, want het extract bevat alleen NL. Voor fase 3 is dus een extract met een strook BE en DE nodig.
 
 ## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
 
