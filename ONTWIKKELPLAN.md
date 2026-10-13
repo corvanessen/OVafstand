@@ -234,7 +234,8 @@ Fase 3, realistisch fietsen:
 - ~~Eerst meten hoeveel het hemelsbrede model in de praktijk afwijkt.~~ Klaar, zie stap 1 hieronder.
 - ~~Een OSRM-fietsprofiel op een OSM-extract van NL.~~ Klaar, zie stap 2.
 - ~~In één regio uitproberen hoe compact de fietstijden kunnen.~~ Eerste proef klaar (stap 3): een fietsraster met Dijkstra in de browser wint van tabellen per halte.
-- **Nu:** het fietsraster verbeteren (16 richtingen, minder zigzag) en de rekentijd in de browser meten.
+- ~~Het fietsraster verbeteren en de rekentijd meten.~~ Klaar (stap 4): 16 richtingen, ±0,5 s voor heel NL.
+- **Nu:** de grootte van het fietsraster omlaag brengen (nu ±5–8 MB) en de uitschieters in Utrecht begrijpen.
 - Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
@@ -304,9 +305,35 @@ Zeeland (261 × 242 cellen, 50% met een weg binnen 250 m) en Utrecht (137 × 134
 - **B is systematisch te lang.** Ruw is B 18–24% te lang. Dat komt door het zigzaggen tussen de gesnapte punten van naburige cellen: die liggen soms op verschillende straten. Ook de achtrichtingsmetriek telt mee, die gemiddeld ±5% te lang is.
 - **Eén vaste factor helpt, maar verschilt per gebied:** 0,84 in Zeeland en 0,80 in Utrecht. Een beter raster heeft de factor liefst niet nodig.
 
-**Volgende proef:**
-1. Kanten ook naar de 8 "paardensprong"-buren (2,1), dus 16 richtingen. Dat geeft minder richtingsfout en relatief minder zigzag.
-2. De rekentijd meten van een Dijkstra over ±1 miljoen landcellen in de browser (nu raster 90–270 ms).
+### Resultaten fase 3, stap 4: 16 richtingen en rekentijd (13 okt 2026)
+
+`bike_grid_test.py <regio> <n> <variant>` met drie varianten:
+- `8`: zoals in stap 3;
+- `16`: daarbij de paardensprongen (2,1);
+- `16L`: daarbij ook lange rechte kanten (2,0), (0,2), (2,2) en (−2,2), samen 24 richtingen.
+
+Fout = raster − OSRM, zonder correctiefactor:
+
+| Variant | Zeeland p2 / p50 / p98 (min) | Zeeland > 5 min | Utrecht p2 / p50 / p98 (min) | Utrecht > 5 min | Raster/OSRM (mediaan) | NL zlib |
+|---|---|---|---|---|---|---|
+| Model × 1,3 | −15,5 / −0,8 / +2,2 | 11,1% | −11,5 / −0,7 / +2,1 | 10,9% | – | 0 |
+| 8 | −1,5 / +2,5 / +7,3 | 13,3% | −0,1 / +3,3 / +11,8 | 27,2% | 1,19–1,24 | 2,5–3,8 MB |
+| **16** | −2,4 / +1,3 / +4,4 | **2,3%** | −1,0 / +1,8 / +9,6 | **8,6%** | 1,10–1,14 | 5,1–7,7 MB |
+| 16L | −2,5 / +1,0 / +3,8 | 1,8% | −1,4 / +1,4 / +8,9 | 6,0% | 1,08–1,10 | 7,6–11,5 MB |
+
+**Rekentijd** (`pipeline/grid_bench.mjs`, Node/V8, synthetisch raster van heel NL met 59% land, 16 richtingen):
+- Met een binaire heap: 1,5–2,0 s als vrijwel heel NL bereikt wordt (±0,8 mln cellen).
+- Met een bucketwachtrij (Dial, 10 s) en de kanten per cel naast elkaar: **±0,5 s** voor 0,9–1,0 mln cellen, ±0,15 s voor ±0,35 mln cellen.
+- 1 byte per kant in plaats van 2 gaf geen winst.
+- Fietsen vanaf het vertrekpunt (15 km) kost ±5 ms.
+
+**Conclusies:**
+- **16 richtingen is de beste keuze.** Zonder correctiefactor wijkt het raster in Zeeland bij 2,3% meer dan 5 min af, tegen 11,1% voor het model. 16L wint daar weinig op, voor 50% meer data.
+- **Utrecht blijft lastiger.** Het raster wijkt daar bij 8,6% meer dan 5 min af (p98 +9,6 min). Het raster is dan te lang, waarschijnlijk door cellen die op een weg aan de andere kant van een barrière snappen, zoals een spoor of gracht. Dit is nog niet onderzocht.
+- **De grootte valt tegen.** Met 16 richtingen is het ±5–8 MB zlib voor heel NL. De doelstelling is een paar MB. Mogelijke winst: 4 bits per kant, kanten weglaten die even lang zijn als de route via twee kortere kanten, of tegels per regio die pas laden als ze nodig zijn.
+- **De rekentijd is ±0,5 s voor heel NL**, tegen 90–270 ms nu. Dat is acceptabel voor een klik, maar niet tijdens slepen. Een mogelijke oplossing: tijdens het slepen de snelle kegels tonen, en na het loslaten het fietsraster.
+
+**Volgende stap:** de grootte omlaag brengen (4 bits, overbodige kanten weglaten, tegels) en de uitschieters in Utrecht begrijpen. Daarna het fietsraster voor heel NL bouwen, met het grensextract.
 
 ## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
 

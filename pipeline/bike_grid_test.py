@@ -32,6 +32,7 @@ REGIONS = {  # lat_min, lat_max, lon_min, lon_max
 }
 REGION = sys.argv[1] if len(sys.argv) > 1 else "zeeland"
 N_STOPS = int(sys.argv[2]) if len(sys.argv) > 2 else 60
+VARIANT = sys.argv[3] if len(sys.argv) > 3 else "8"
 DATE = "20261110"
 OSRM = "http://localhost:5000/table/v1/bike/"
 OUT_DATA = ROOT / "data" / "bike_grid"
@@ -85,23 +86,30 @@ NI, NJ = I1 - I0 + 1, J1 - J0 + 1
 ii, jj = np.meshgrid(np.arange(I0, I1 + 1), np.arange(J0, J1 + 1))   # [j, i]
 clat = invLat(Y0 + (jj + 0.5) * CELL)
 clon = invLon(X0 + (ii + 0.5) * CELL)
-DIRS = [(1, 0), (0, 1), (1, 1), (-1, 1)]  # O, N, NO, NW
+# kanten "vooruit" (de rest zijn dezelfde kanten terug); (di, dj) in cellen
+DIRS = [(1, 0), (0, 1), (1, 1), (-1, 1)]                     # 8 richtingen
+if VARIANT in ("16", "16L"):
+    DIRS += [(2, 1), (1, 2), (-1, 2), (-2, 1)]               # + paardensprongen: 16 richtingen
+if VARIANT == "16L":
+    DIRS += [(2, 0), (0, 2), (2, 2), (-2, 2)]                # + lange rechte kanten tegen zigzag
+M_I = max(abs(di) for di, _ in DIRS)
+M_J = max(dj for _, dj in DIRS)
 
 
 def build_edges():
     """B: per cel de wegafstand naar 4 buren, per blok één OSRM-tabel"""
-    f = OUT_DATA / f"{REGION}_edges.npz"
+    f = OUT_DATA / f"{REGION}_edges{'' if VARIANT == '8' else VARIANT}.npz"
     if f.exists():
         z = np.load(f)
         return z["snap"], z["road"]
     snap = np.full((NJ, NI), np.inf)
-    road = np.full((4, NJ, NI), np.inf)   # wegafstand tussen de gesnapte punten
+    road = np.full((len(DIRS), NJ, NI), np.inf)   # wegafstand tussen de gesnapte punten
 
     def block(b):
         bj, bi = b
-        # blok plus één rij erboven en één kolom links en rechts, voor de buren
-        js = np.arange(bj, min(bj + BLOCK + 1, NJ))
-        is_ = np.arange(max(bi - 1, 0), min(bi + BLOCK + 1, NI))
+        # blok plus een rand erboven en links en rechts, voor de buren
+        js = np.arange(bj, min(bj + BLOCK + M_J, NJ))
+        is_ = np.arange(max(bi - M_I, 0), min(bi + BLOCK + M_I, NI))
         gj, gi = np.meshgrid(js, is_, indexing="ij")
         gj, gi = gj.ravel(), gi.ravel()
         res = table(clat[gj, gi], clon[gj, gi])
@@ -208,7 +216,7 @@ def evaluate(graph, node):
 
 
 def main():
-    print(f"regio {REGION}: {NI} × {NJ} = {NI * NJ} cellen")
+    print(f"regio {REGION}, variant {VARIANT} ({2 * len(DIRS)} richtingen): {NI} × {NJ} = {NI * NJ} cellen")
     snap, road = build_edges()
     q, node = quantize(snap, road)
     print(f"cellen met een fietsbare weg binnen {SNAP_MAX:.0f} m: {node.mean():.1%}")
@@ -246,7 +254,7 @@ def main():
     ax = axes[0]
     ax.imshow(np.where(node, (q < 255).sum(0), np.nan), origin="lower", cmap="viridis",
               extent=(lo0, lo1, la0, la1), aspect=1 / np.cos(np.radians((la0 + la1) / 2)))
-    ax.set_title(f"{REGION}: aantal kanten per cel (0–4), wit = geen weg binnen {SNAP_MAX:.0f} m")
+    ax.set_title(f"{REGION}: aantal kanten vooruit per cel, wit = geen weg binnen {SNAP_MAX:.0f} m")
     ax = axes[1]
     bins = np.linspace(-15, 25, 81)
     ax.hist(M - T, bins, alpha=0.5, label="hemelsbreed × 1,3")
@@ -255,8 +263,9 @@ def main():
     ax.set_xlabel("schatting − OSRM (min)")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(OUT / f"bike_grid_{REGION}.png", dpi=110)
-    print(f"\nfiguur: {OUT / f'bike_grid_{REGION}.png'}")
+    name = f"bike_grid_{REGION}_{VARIANT}.png"
+    fig.savefig(OUT / name, dpi=110)
+    print(f"\nfiguur: {OUT / name}")
 
 
 if __name__ == "__main__":
