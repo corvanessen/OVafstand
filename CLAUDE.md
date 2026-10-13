@@ -10,7 +10,7 @@ Fase 0, 1 en 2 zijn klaar. Fase 3 (realistisch fietsen) loopt:
 - de meting van hemelsbreed × 1,3 is klaar;
 - een eigen OSRM-server draait in WSL.
 
-Volgende stap: compacte opslag van de fietstijden uitproberen in één regio (zie het plan).
+De eerste proef met de opslag is klaar: een fietsraster (kanten per cel, Dijkstra in de browser) wint van tabellen per halte. Volgende stap: het raster verbeteren (16 richtingen) en de rekentijd in de browser meten (zie het plan).
 
 **Afspraak:** na elke afgeronde stap de resultaten en de volgende stap bijwerken in ONTWIKKELPLAN.md, en de stand van zaken hier.
 

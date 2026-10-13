@@ -233,7 +233,8 @@ Scripts in `pipeline/`: `extract_day.py` → `stats.py` → `build_graph.py` →
 Fase 3, realistisch fietsen:
 - ~~Eerst meten hoeveel het hemelsbrede model in de praktijk afwijkt.~~ Klaar, zie stap 1 hieronder.
 - ~~Een OSRM-fietsprofiel op een OSM-extract van NL.~~ Klaar, zie stap 2.
-- **Nu:** in één regio (bijvoorbeeld Zeeland) uitproberen hoe compact de fietstijden per halte naar de cellen binnen 5 km kunnen. Een volledige tabel is ±34.000 × ±1.250 ≈ 43 miljoen waarden, te veel voor de browser. Omdat ±85% al binnen 5 min klopt, ligt het voor de hand alleen correcties op te slaan.
+- ~~In één regio uitproberen hoe compact de fietstijden kunnen.~~ Eerste proef klaar (stap 3): een fietsraster met Dijkstra in de browser wint van tabellen per halte.
+- **Nu:** het fietsraster verbeteren (16 richtingen, minder zigzag) en de rekentijd in de browser meten.
 - Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
@@ -279,6 +280,33 @@ Fout = fietstijd over de echte route min de modeltijd, beide bij 15 km/u. Positi
   - De ergste omwegen zijn dezelfde routes als bij de publieke server.
   - OSRM rekent lokaal met 13,7 km/u, publiek met 14,2 km/u. Dat maakt niet uit, want we rekenen met onze eigen snelheid.
 - **Grens.** Lokaal valt 29% van de bestemmingen af (meer dan 250 m van een weg), publiek 16%. Het verschil zit bij Belgische haltes uit de GTFS (Maasmechelen, Hasselt, Beerse) en bij bestemmingen over de grens, want het extract bevat alleen NL. Voor fase 3 is dus een extract met een strook BE en DE nodig.
+
+### Resultaten fase 3, stap 3: opslagvorm, eerste proef (13 okt 2026)
+
+`pipeline/bike_grid_test.py <regio>` vergelijkt twee opslagvormen met de eigen OSRM-server als waarheid. Per regio 56–60 haltes met de cellen binnen 5 km. Beide regio's samen hebben ±73.000 paren.
+- **A. Tabellen per halte.** Voor elke halte de fietstijd naar elke cel, of alleen de correcties.
+- **B. Fietsraster.** Per cel de wegafstand naar 4 buren (O, N, NO, NW; de andere 4 zijn dezelfde kanten terug), als uint8-omrijfactor. De browser doet dan Dijkstra over de cellen, met de haltes als bron.
+
+Zeeland (261 × 242 cellen, 50% met een weg binnen 250 m) en Utrecht (137 × 134 cellen, 77%). Fout = schatting − OSRM, in minuten bij 15 km/u.
+
+| | Zeeland p2 / p50 / p98 | Zeeland \|fout\| > 3 / > 5 min | Utrecht p2 / p50 / p98 | Utrecht \|fout\| > 3 / > 5 min |
+|---|---|---|---|---|
+| Model hemelsbreed × 1,3 | −15,5 / −0,8 / +2,2 | 20,8% / 11,1% | −11,5 / −0,7 / +2,1 | 20,9% / 10,9% |
+| B. fietsraster, ruw | −1,5 / +2,5 / +7,3 | – / 13,3% | −0,1 / +3,3 / +11,8 | – / 27,2% |
+| B. × vaste factor (0,844 / 0,804) | −4,9 / 0,0 / +3,5 | 6,9% / 2,4% | −4,0 / 0,0 / +6,3 | 12,2% / 4,4% |
+
+**Grootte voor heel NL:**
+- B kost ±2,5–3,8 MB (zlib), geschat vanuit de verhouding land/water in de regio.
+- A met alleen correcties boven 5 min kost ±6–8 MB, boven 3 min ±12–14 MB, boven 2 min ±19–22 MB.
+
+**Conclusies:**
+- **B wint.** B is kleiner, en het werkt ook voor het vertrekpunt (`directMaxKm`). A kan dat niet, want het vertrekpunt ligt overal. B vangt de barrières: het model is tot 15 min te gunstig, B maar enkele minuten.
+- **B is systematisch te lang.** Ruw is B 18–24% te lang. Dat komt door het zigzaggen tussen de gesnapte punten van naburige cellen: die liggen soms op verschillende straten. Ook de achtrichtingsmetriek telt mee, die gemiddeld ±5% te lang is.
+- **Eén vaste factor helpt, maar verschilt per gebied:** 0,84 in Zeeland en 0,80 in Utrecht. Een beter raster heeft de factor liefst niet nodig.
+
+**Volgende proef:**
+1. Kanten ook naar de 8 "paardensprong"-buren (2,1), dus 16 richtingen. Dat geeft minder richtingsfout en relatief minder zigzag.
+2. De rekentijd meten van een Dijkstra over ±1 miljoen landcellen in de browser (nu raster 90–270 ms).
 
 ## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
 
