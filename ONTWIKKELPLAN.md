@@ -235,7 +235,8 @@ Fase 3, realistisch fietsen:
 - ~~Een OSRM-fietsprofiel op een OSM-extract van NL.~~ Klaar, zie stap 2.
 - ~~In één regio uitproberen hoe compact de fietstijden kunnen.~~ Eerste proef klaar (stap 3): een fietsraster met Dijkstra in de browser wint van tabellen per halte.
 - ~~Het fietsraster verbeteren en de rekentijd meten.~~ Klaar (stap 4): 16 richtingen, ±0,5 s voor heel NL.
-- **Nu:** de grootte van het fietsraster omlaag brengen (nu ±5–8 MB) en de uitschieters in Utrecht begrijpen.
+- ~~De grootte omlaag brengen en de uitschieters in Utrecht begrijpen.~~ Klaar (stap 5): start in 3 × 3 cellen, 4 bits, ±3–4 MB, fout > 5 min bij <1%.
+- **Nu:** het fietsraster voor heel NL bouwen en inbouwen in de web-app.
 - Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
@@ -333,7 +334,36 @@ Fout = raster − OSRM, zonder correctiefactor:
 - **De grootte valt tegen.** Met 16 richtingen is het ±5–8 MB zlib voor heel NL. De doelstelling is een paar MB. Mogelijke winst: 4 bits per kant, kanten weglaten die even lang zijn als de route via twee kortere kanten, of tegels per regio die pas laden als ze nodig zijn.
 - **De rekentijd is ±0,5 s voor heel NL**, tegen 90–270 ms nu. Dat is acceptabel voor een klik, maar niet tijdens slepen. Een mogelijke oplossing: tijdens het slepen de snelle kegels tonen, en na het loslaten het fietsraster.
 
-**Volgende stap:** de grootte omlaag brengen (4 bits, overbodige kanten weglaten, tegels) en de uitschieters in Utrecht begrijpen. Daarna het fietsraster voor heel NL bouwen, met het grensextract.
+### Resultaten fase 3, stap 5: startcellen, 4 bits en snoeien (14 okt 2026)
+
+`bike_grid_test.py <regio> 60 16 <R> [--prune] [--4bit]` slaat nu per paar halte, cel en fouten op in `data/bike_grid/`, voor nader onderzoek.
+
+**Uitschieters in Utrecht.** Die zaten bij een paar haltes: bij Houten Meidoornkade en De Biltsche Hoek was 98% van de paren meer dan 5 min fout. Het raster startte alleen in de cel van de halte. Ligt het gesnapte midden van die cel achter een spoor of water, dan begint elke route met een omweg. De oplossing: de halte start in de 3 × 3 cellen eromheen (R = 1), elk met de echte fietsafstand halte → celknoop uit OSRM. Dat kost 9 bytes per halteplek, ±0,3 MB voor NL.
+
+**Fout in de 8-bitsversie.** Omrijfactoren boven 8,94 werden afgekapt in plaats van weggelaten. Een kant zonder brug werd zo een te korte sluiproute; daar kwam de p2 van −3 min vandaan. De 4-bitsversie laat te grote factoren weg.
+
+**4 bits per kant.** 15 niveaus van de omrijfactor (1,00 / 1,04 / 1,08 / 1,13 / 1,19 / 1,26 / 1,35 / 1,46 / 1,6 / 1,8 / 2,05 / 2,4 / 2,9 / 3,6 / 4,5) plus "geen kant". Factoren boven ±5 worden geen kant, nooit afgerond naar beneden.
+
+**Snoeien.** Een kant valt weg als een pad over twee andere kanten even kort of korter is. Kortste paden blijven exact gelijk. Dat haalt 17–19% van de kanten weg, maar scheelt in grootte maar ±7%.
+
+Variant 16, fout = raster − OSRM, zonder correctiefactor:
+
+| | Zeeland p2 / p50 / p98 (min) | Zeeland > 5 min | Utrecht p2 / p50 / p98 (min) | Utrecht > 5 min | NL zlib |
+|---|---|---|---|---|---|
+| Model × 1,3 | −15,5 / −0,8 / +2,2 | 11,1% | −11,5 / −0,7 / +2,1 | 10,9% | 0 |
+| 8 bits, start 1 cel | −2,4 / +1,3 / +4,4 | 2,3% | −1,0 / +1,8 / +9,6 | 8,6% | 5,1–7,7 MB |
+| 8 bits, start 3 × 3 | −3,1 / +0,5 / +3,3 | 1,9% | −1,9 / +1,0 / +4,0 | 1,1% | 5,1–7,7 MB |
+| **4 bits, start 3 × 3, gesnoeid** | **−1,1 / +0,5 / +3,5** | **0,7%** | **−1,0 / +1,0 / +4,1** | **0,8%** | **2,8–4,3 MB** |
+
+Het raster is nu in de mediaan 4–7% te lang, zonder correctiefactor. De NL-grootte is geschat vanuit de regio's; de echte waarde volgt pas uit een raster voor heel NL.
+
+**Volgende stap:**
+1. Het fietsraster voor heel NL bouwen (±25.000 OSRM-verzoeken, naar schatting 30–40 min) en de echte grootte meten.
+2. Het inbouwen in de web-app:
+   - het bestand laden met `DecompressionStream`;
+   - Dijkstra met een bucketwachtrij in de worker;
+   - tijdens het slepen de kegels, na het loslaten het fietsraster.
+3. Daarna het grensextract met een strook BE en DE.
 
 ## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
 

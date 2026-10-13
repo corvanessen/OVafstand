@@ -1,6 +1,7 @@
 """Fase 3, stap 3: hoe sla je echte fietstijden compact op? Proef in één regio.
 
-Gebruik:  python pipeline/bike_grid_test.py [regio] [aantal_haltes]     (regio: zeeland, utrecht)
+Gebruik:  python pipeline/bike_grid_test.py [regio] [aantal_haltes] [variant] [startstraal]
+          regio: zeeland, utrecht; variant: 8, 16, 16L; startstraal R: de halte start in (2R+1)² cellen
 
 Vergelijkt twee opslagvormen met OSRM (eigen server, localhost:5000) als waarheid:
   A. tabellen per halte: fietstijd naar elke cel binnen 5 km, of alleen de correcties t.o.v. het model;
@@ -33,6 +34,9 @@ REGIONS = {  # lat_min, lat_max, lon_min, lon_max
 REGION = sys.argv[1] if len(sys.argv) > 1 else "zeeland"
 N_STOPS = int(sys.argv[2]) if len(sys.argv) > 2 else 60
 VARIANT = sys.argv[3] if len(sys.argv) > 3 else "8"
+SEED_R = int(sys.argv[4]) if len(sys.argv) > 4 else 0   # halte start in (2R+1)² cellen rondom
+PRUNE = "--prune" in sys.argv                            # overbodige kanten weglaten
+BITS4 = "--4bit" in sys.argv                             # 4 bits per kant in plaats van 8
 DATE = "20261110"
 OSRM = "http://localhost:5000/table/v1/bike/"
 OUT_DATA = ROOT / "data" / "bike_grid"
@@ -163,6 +167,75 @@ def quantize(snap, road):
     return q, node
 
 
+def edge_len(q):
+    """kantlengte in meters per richting en cel (inf = geen kant), uit de gekwantiseerde factor"""
+    L = np.full(q.shape, np.inf)
+    for n, (di, dj) in enumerate(DIRS):
+        b_lat = np.roll(np.roll(clat, -dj, 0), -di, 1)
+        b_lon = np.roll(np.roll(clon, -dj, 0), -di, 1)
+        straight = haversine(clat, clon, b_lat, b_lon)
+        ok = q[n] < 255
+        L[n][ok] = straight[ok] * (1 + q[n][ok] * Q_STEP)
+    return L
+
+
+def prune(q):
+    """Kanten weglaten waarvoor een pad over twee andere kanten even kort of korter is.
+    Kortste paden blijven gelijk: elke weggelaten kant heeft een alternatief van strikt kortere kanten."""
+    L = edge_len(q)
+    # alle 16 richtingen als (vector, richting-index, vooruit?) zodat L[u → u+vec] op te zoeken is
+    full = [((di, dj), n, True) for n, (di, dj) in enumerate(DIRS)] + \
+           [((-di, -dj), n, False) for n, (di, dj) in enumerate(DIRS)]
+
+    def get(vec, n, fwd):
+        """lengte van de kant u → u+vec voor elke cel u (inf buiten het raster)"""
+        if fwd:
+            return L[n]
+        di, dj = vec   # kant ligt opgeslagen in de buurcel u+vec, in richting -vec
+        out = np.full((NJ, NI), np.inf)
+        a0, a1, c0, c1 = max(0, -dj), NJ - max(0, dj), max(0, -di), NI - max(0, di)
+        out[a0:a1, c0:c1] = L[n][a0 + dj:a1 + dj, c0 + di:c1 + di]
+        return out
+
+    def shift(arr, di, dj):
+        """arr verschoven zodat out[u] = arr[u + (di, dj)]"""
+        out = np.full((NJ, NI), np.inf)
+        a0, a1, c0, c1 = max(0, -dj), NJ - max(0, dj), max(0, -di), NI - max(0, di)
+        out[a0:a1, c0:c1] = arr[a0 + dj:a1 + dj, c0 + di:c1 + di]
+        return out
+
+    lookup = {vec: (vec, n, f) for vec, n, f in full}
+    q2 = q.copy()
+    for n, target in enumerate(DIRS):
+        best = np.full((NJ, NI), np.inf)
+        for v1, n1, f1 in full:
+            v2 = (target[0] - v1[0], target[1] - v1[1])
+            if v2 not in lookup:
+                continue
+            best = np.minimum(best, get(v1, n1, f1) + shift(get(*lookup[v2]), *v1))
+        q2[n][(q[n] < 255) & (best <= L[n] + 1e-6)] = 255
+    return q2
+
+
+# 4 bits per kant: 15 niveaus van de omrijfactor (14 = grootste), 15 = geen kant
+LEVELS4 = np.array([1.0, 1.04, 1.08, 1.13, 1.19, 1.26, 1.35, 1.46, 1.6, 1.8, 2.05, 2.4, 2.9, 3.6, 4.5])
+
+
+def to4bit(q):
+    """uint8-factor → 4-bit niveau (afgerond in log-schaal); te grote factoren worden 'geen kant'"""
+    r = 1 + q.astype(float) * Q_STEP
+    lv = np.abs(np.log(r)[..., None] - np.log(LEVELS4)).argmin(-1).astype(np.uint8)
+    lv[(q == 255) | (r > LEVELS4[-1] * 1.1)] = 15
+    return lv
+
+
+def from4bit(lv):
+    """terug naar de uint8-schaal, zodat grid_graph() er gewoon mee rekent"""
+    q = np.clip(np.round((LEVELS4[np.minimum(lv, 14)] - 1) / Q_STEP), 0, 254).astype(np.uint8)
+    q[lv == 15] = 255
+    return q
+
+
 def grid_graph(q, node):
     """B in de browser: ongerichte graaf over de cellen met de gekwantiseerde kanten"""
     rows, cols, w = [], [], []
@@ -183,7 +256,7 @@ def evaluate(graph, node):
     lat, lon, names = g["area_lat"], g["area_lon"], g["area_name"]
     inside = np.flatnonzero((lat > la0 + 0.05) & (lat < la1 - 0.05) & (lon > lo0 + 0.07) & (lon < lo1 - 0.07))
     picks = np.random.default_rng(7).choice(inside, size=min(N_STOPS, len(inside)), replace=False)
-    t_true, t_grid, t_model, cnt_cells = [], [], [], []
+    t_true, t_grid, t_model, cnt_cells, pair_stop, pair_cell = [], [], [], [], [], []
     for s in picks:
         dd = haversine(lat[s], lon[s], clat, clon)
         near = np.flatnonzero((dd <= BIKE_MAX / DETOUR).ravel() & node.ravel())   # zelfde venster als de kegel
@@ -194,32 +267,51 @@ def evaluate(graph, node):
             continue
         d_true = np.array([np.nan if x is None else x for x in res["distances"][0][1:]], float)
         d_true += res["sources"][0]["distance"] + np.array([x["distance"] for x in res["destinations"][1:]])
-        # raster: start in de cel van de halte, met de echte afstand halte → die cel
-        own = int((mercY(lat[s]) - Y0) // CELL) - J0, int((mercX(lon[s]) - X0) // CELL) - I0
-        own_k = own[0] * NI + own[1]
-        hit = np.flatnonzero(near == own_k)
-        if not len(hit) or np.isnan(d_true[hit[0]]):
-            continue
-        # celknoop = het gesnapte punt van het celmidden: halte → eigen knoop, dan over het raster,
-        # dan van de knoop van de doelcel naar het celmidden
+        # raster: start in de cellen rond de halte (straal SEED_R), elk met de echte afstand halte → celknoop.
+        # Celknoop = het gesnapte punt van het celmidden; aan het eind komt de snapafstand van de doelcel erbij.
+        oj, oi = int((mercY(lat[s]) - Y0) // CELL) - J0, int((mercX(lon[s]) - X0) // CELL) - I0
         snap_dst = np.array([x["distance"] for x in res["destinations"][1:]])
-        start = d_true[hit[0]] - snap_dst[hit[0]]
-        d_grid = dijkstra(graph, indices=own_k, limit=3 * BIKE_MAX)[near] + start + snap_dst
+        pos = {k: n for n, k in enumerate(near)}
+        seeds = [(k, d_true[pos[k]] - snap_dst[pos[k]])
+                 for dj in range(-SEED_R, SEED_R + 1) for di in range(-SEED_R, SEED_R + 1)
+                 if (k := (oj + dj) * NI + oi + di) in pos and np.isfinite(d_true[pos[k]])]
+        if not seeds:
+            continue
+        ks, starts = zip(*seeds)
+        dist = dijkstra(graph, indices=list(ks), limit=3 * BIKE_MAX)[:, near] + np.array(starts)[:, None]
+        d_grid = dist.min(0) + snap_dst
         t_true.append(d_true)
         t_grid.append(d_grid)
         t_model.append(dd.ravel()[near] * DETOUR)
+        pair_stop.append(np.full(len(near), s))
+        pair_cell.append(near)
     v = KMH / 3.6 * 60
     T, G, M = (np.concatenate(x) / v for x in (t_true, t_grid, t_model))
+    S, C = np.concatenate(pair_stop), np.concatenate(pair_cell)
     ok = np.isfinite(T)
+    # per paar bewaren, voor nader onderzoek van de uitschieters
+    np.savez_compressed(OUT_DATA / f"{REGION}_{VARIANT}_s{SEED_R}_pairs.npz", stop=S[ok], cell=C[ok], T=T[ok], G=G[ok], M=M[ok])
     T, G, M = T[ok], G[ok], M[ok]
     return T, G, M, np.mean(cnt_cells), len(t_true)
 
 
 def main():
-    print(f"regio {REGION}, variant {VARIANT} ({2 * len(DIRS)} richtingen): {NI} × {NJ} = {NI * NJ} cellen")
+    print(f"regio {REGION}, variant {VARIANT} ({2 * len(DIRS)} richtingen), start in {(2 * SEED_R + 1) ** 2} cellen: "
+          f"{NI} × {NJ} = {NI * NJ} cellen")
     snap, road = build_edges()
     q, node = quantize(snap, road)
     print(f"cellen met een fietsbare weg binnen {SNAP_MAX:.0f} m: {node.mean():.1%}")
+    if PRUNE:
+        n0 = (q < 255).sum()
+        q = prune(q)
+        print(f"overbodige kanten weggelaten: {n0} → {(q < 255).sum()} ({(q < 255).sum() / n0:.0%})")
+    if BITS4:
+        lv = to4bit(q)
+        nib = np.ascontiguousarray(lv.transpose(1, 2, 0)).reshape(-1)          # per cel naast elkaar
+        packed4 = zlib.compress((nib[0::2] << 4 | nib[1::2]).astype(np.uint8).tobytes(), 9)
+        print(f"4 bits: {len(nib) / 2e6:.2f} MB ruw, {len(packed4) / 1e6:.2f} MB zlib "
+              f"→ heel NL ±{len(packed4) / (NI * NJ) * 1146 * 1378 / 1e6:.1f} MB")
+        q = from4bit(lv)
 
     # B: grootte
     raw = q.tobytes()

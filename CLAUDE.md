@@ -10,7 +10,7 @@ Fase 0, 1 en 2 zijn klaar. Fase 3 (realistisch fietsen) loopt:
 - de meting van hemelsbreed × 1,3 is klaar;
 - een eigen OSRM-server draait in WSL.
 
-De opslagvorm is gekozen: een fietsraster met 16 richtingen (kanten per cel, Dijkstra met een bucketwachtrij in de browser, ±0,5 s voor heel NL). Volgende stap: de grootte omlaag brengen (nu ±5–8 MB) en de uitschieters in Utrecht begrijpen (zie het plan).
+De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en een halte die start in 3 × 3 cellen. Dijkstra met een bucketwachtrij in de browser kost ±0,5 s voor heel NL. In proefregio's wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3. Volgende stap: het raster voor heel NL bouwen en inbouwen in de web-app (zie het plan).
 
 **Afspraak:** na elke afgeronde stap de resultaten en de volgende stap bijwerken in ONTWIKKELPLAN.md, en de stand van zaken hier.
 
