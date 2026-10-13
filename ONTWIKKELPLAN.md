@@ -334,7 +334,7 @@ Fout = raster − OSRM, zonder correctiefactor:
 - **De grootte valt tegen.** Met 16 richtingen is het ±5–8 MB zlib voor heel NL. De doelstelling is een paar MB. Mogelijke winst: 4 bits per kant, kanten weglaten die even lang zijn als de route via twee kortere kanten, of tegels per regio die pas laden als ze nodig zijn.
 - **De rekentijd is ±0,5 s voor heel NL**, tegen 90–270 ms nu. Dat is acceptabel voor een klik, maar niet tijdens slepen. Een mogelijke oplossing: tijdens het slepen de snelle kegels tonen, en na het loslaten het fietsraster.
 
-### Resultaten fase 3, stap 5: startcellen, 4 bits en snoeien (14 okt 2026)
+### Resultaten fase 3, stap 5: startcellen, 4 bits en snoeien (13 okt 2026)
 
 `bike_grid_test.py <regio> 60 16 <R> [--prune] [--4bit]` slaat nu per paar halte, cel en fouten op in `data/bike_grid/`, voor nader onderzoek.
 
