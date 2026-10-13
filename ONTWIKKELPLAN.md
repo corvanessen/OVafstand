@@ -235,6 +235,37 @@ Fase 3, realistisch fietsen:
 - Daarmee per halteplek de fietstijden naar de cellen binnen 5 km berekenen, opgeslagen in tegels.
 - Eerst meten hoeveel het hemelsbrede model in de praktijk afwijkt.
 
+### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
+
+`pipeline/bike_check.py` vergelijkt het model met echte fietsroutes van de publieke OSRM-fietsserver van FOSSGIS (`routing.openstreetmap.de`).
+- **Steekproef:** 218 van de geplande 300 halteplekken. Per halte 40 bestemmingen binnen 5 km en 10 tussen 5 en 15 km, samen 10.900 paren.
+- **Server:** die gaf na ongeveer 200 haltes HTTP 429. Het script stopt dan met ophalen en analyseert de cache. `--offline` analyseert alleen de cache.
+- **Weggelaten:** 17% van de bestemmingen ligt meer dan 250 m van een fietsbare weg (water, weiland).
+
+| Afstand hemelsbreed | Paren | Omrijfactor p10 / p50 / p90 | Fout model p50 / p90 / p98 (min) |
+|---|---|---|---|
+| 0,3–1 km | 329 | 1,05 / 1,34 / 2,09 | +0,3 / +3,0 / +6,6 |
+| 1–2 km | 897 | 1,14 / 1,37 / 2,02 | +0,6 / +4,9 / +12,2 |
+| 2–3 km | 1.450 | 1,15 / 1,35 / 1,85 | +0,8 / +5,9 / +14,1 |
+| 3–5 km | 4.652 | 1,16 / 1,33 / 1,71 | +0,8 / +6,9 / +17,9 |
+| 5–10 km | 653 | 1,15 / 1,29 / 1,57 | 0,0 / +8,5 / +23,7 |
+| 10–15 km | 1.043 | 1,17 / 1,27 / 1,48 | −1,1 / +9,5 / +28,2 |
+
+Fout = fietstijd over de echte route min de modeltijd, beide bij 15 km/u. Positief betekent dat het model te gunstig is.
+
+**Conclusies:**
+- **De mediaan klopt.** Binnen 5 km is de mediane factor 1,34. De best passende vaste factor is 1,30, precies wat het model nu gebruikt.
+- **Stad of platteland maakt weinig uit.** De mediane factor is 1,33 in de stad en 1,36 op het platteland.
+- **OSRM rekent met 14,4 km/u** (mediaan), dicht bij de 15 km/u van het model.
+- **De fout zit in de staart.** Binnen 5 km wijkt het model bij 13,9% van de paren meer dan 5 min af en bij 4,7% meer dan 10 min, bijna altijd te gunstig.
+- **De ergste gevallen zijn water zonder brug:**
+  - Terschelling: +318 min;
+  - Elahuizen aan de Fluessen: +70 min;
+  - Wemeldinge aan het kanaal en de Oosterschelde: +59 min;
+  - Maasvlakte: +46 min;
+  - Hardinxveld aan de Merwede: +44 min.
+- **Gevolg voor fase 3.** Een andere vaste factor levert niets op. De winst zit alleen bij barrières. Dat rechtvaardigt echte fietstijden per halte via OSRM, maar het meeste gebied klopt nu al binnen 5 min.
+
 ## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
 
 Fase 6 maakt de site begrijpelijk en deelbaar voor bezoekers die niets van GTFS of Dijkstra weten. Het rekenmodel blijft zoals het is.
