@@ -225,6 +225,8 @@ Scripts in `pipeline/`: `extract_day.py` → `stats.py` → `build_graph.py` →
 - Rond kleine wateren klopt het water-masker, maar de route kan er nog "overheen".
 - De JS-bundel is 290 kB gzip (vooral MapLibre). De data is ongeveer 4 MB ongecomprimeerd en wordt bij het laden in één keer opgehaald.
 - Er is geen dienstregelingsmodus en geen grensregio.
+- De wachttijd ½ × interval geldt alleen voor een perfect regelmatige dienst. Bij onregelmatige intervallen is de verwachte wachttijd (H/2)·(1 + σ²/H²), dus langer. Mogelijke uitbreiding: σ per corridor uitrekenen in de pipeline.
+- Rijtijden en intervallen komen uit 07–19 u op één werkdag. Voor de avond, de nacht en het weekend is de kaart dus te gunstig.
 
 ### Volgende concrete stap
 
