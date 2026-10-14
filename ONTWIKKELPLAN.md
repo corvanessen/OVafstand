@@ -240,7 +240,8 @@ Fase 3, realistisch fietsen:
 - ~~Het fietsraster inbouwen in de web-app.~~ Klaar (stap 7).
 - ~~Het grensextract (strook BE en DE) en fietspontjes controleren.~~ Klaar (stap 8). Daarmee is fase 3 af.
 - ~~Fase 6.1, snelle winst.~~ Klaar, zie "Resultaten fase 6.1".
-- **Nu:** bezoekers meten (6.2), daarna de smartphone (6.3). Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
+- ~~Bezoekers meten (6.2).~~ Klaar, zie "Resultaten fase 6.2".
+- **Nu:** de smartphone (6.3). Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -583,6 +584,20 @@ Begonnen met 6.1 in plaats van 6.2 (keuze van de gebruiker). Op branch `fase6`.
   - het favicon.
 
   Alles OK, zonder consolefouten. Ook gecontroleerd: `tsc`, `npm run build` en een screenshot op 390 px breed. Op een echt toestel is het nog niet getest: `navigator.share` en de locatie.
+
+### Resultaten fase 6.2: bezoekers meten (14 okt 2026)
+
+- **Account.** `ovafstand.goatcounter.com` (aangemaakt door de gebruiker). Het script staat in `index.html`, met `async`.
+- **Wat er niet meegaat.** `count.js` stuurt alleen `pathname + search` mee, nooit de hash met het vertrekpunt. Op `localhost` en in privé-netwerken telt het niet (`allow_local` staat standaard uit). Gecontroleerd in de broncode van `count.js` en in Chrome: "not counting because of: localhost".
+- **Eigen bezoeken uitzetten.** Open één keer `…/OVafstand/#toggle-goatcounter` in je eigen browser.
+- **Gebeurtenissen** (`track()` in `main.ts`): elk is een eigen pad, zodat het dashboard ze apart telt. Het zijn alleen namen, zonder coördinaten of adressen.
+  - `vertrekpunt-klik`, `-tik`, `-slepen`, `-zoeken`, `-voorbeeld` en `-locatie`. Het plan noemde één gebeurtenis `vertrekpunt-gekozen`, maar per bron leert meer.
+  - `gedeeld-menu` (`navigator.share`) en `gedeeld-kopie` (klembord).
+  - `uitleg-geopend` en `instellingen-geopend`.
+  - Later: `animatie-gestart` en `vergelijken-gestart`.
+- **In "Hoe werkt dit?"** staat: "Bezoeken worden geteld met GoatCounter, zonder cookies en zonder je locatie."
+- **Getest in headless Chrome.** Met een recorder in plaats van `goatcounter.count` komen chip, uitleg, instellingen, delen, locatie en klik in de juiste volgorde binnen, zonder cijfers.
+- **Nulmeting.** Er wordt pas geteld na een merge naar `main`, omdat Pages vanaf `main` publiceert.
 
 ### 6.6 Volgorde
 

@@ -13,6 +13,18 @@ setWorkerUrl(maplibreWorkerUrl);
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
+// ---------- bezoekers tellen (GoatCounter, zonder cookies; zie index.html) ----------
+// Alleen het soort gebeurtenis, nooit coördinaten of adressen. count.js telt niet op localhost
+// en stuurt de hash (met het vertrekpunt) niet mee.
+declare global {
+  interface Window {
+    goatcounter?: { count?: (v: { path: string; title?: string; event?: boolean }) => void };
+  }
+}
+function track(event: string) {
+  window.goatcounter?.count?.({ path: event, event: true });
+}
+
 // ---------- instellingen ----------
 const DEFAULTS: Params = {
   waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true,
@@ -183,6 +195,7 @@ const marker = new Marker({ element: markerEl, draggable: true }).setLngLat([ori
 marker.on("dragend", () => {
   const p = marker.getLngLat();
   setOrigin(p.lat, p.lng);
+  track("vertrekpunt-slepen");
 });
 
 const popup = new Popup({ closeButton: true, maxWidth: "320px", className: "route-popup" });
@@ -337,7 +350,10 @@ function onExplain(m: Extract<Response, { type: "explain" }>) {
     const btn = document.createElement("button");
     btn.className = "btn";
     btn.textContent = "Vertrek vanaf hier";
-    btn.onclick = () => setOrigin(lastPopupLngLat[1], lastPopupLngLat[0]);
+    btn.onclick = () => {
+      setOrigin(lastPopupLngLat[1], lastPopupLngLat[0]);
+      track("vertrekpunt-tik");
+    };
     box.append(btn);
     popup.setLngLat(lastPopupLngLat).setDOMContent(box).addTo(map);
     explainTarget = null;
@@ -379,6 +395,7 @@ map.on("click", (e) => {
     requestExplain(e.lngLat.lat, e.lngLat.lng, "popup");
   } else {
     setOrigin(e.lngLat.lat, e.lngLat.lng);
+    track("vertrekpunt-klik");
   }
 });
 
@@ -413,6 +430,7 @@ function pick(i: number) {
   showResults([]);
   q.blur();
   goTo(p.lat, p.lon, p.name);
+  track("vertrekpunt-zoeken");
 }
 
 q.addEventListener("input", () => {
@@ -460,6 +478,10 @@ window.addEventListener("hashchange", () => {
   map.flyTo({ center: [h.origin.lon, h.origin.lat] });
 });
 if (matchMedia("(max-width: 640px)").matches) $("panel").classList.add("collapsed");
+for (const id of ["settings", "about"]) {
+  const d = $<HTMLDetailsElement>(id);
+  d.addEventListener("toggle", () => d.open && track(id === "about" ? "uitleg-geopend" : "instellingen-geopend"));
+}
 $("panelToggle").addEventListener("click", () => $("panel").classList.toggle("collapsed"));
 
 // ---------- voorbeelden, mijn locatie, delen ----------
@@ -479,6 +501,7 @@ for (const [label, lat, lon, name] of CHIPS) {
     if (ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
     ev.preventDefault(); // zo blijven de instellingen staan
     goTo(lat, lon, name);
+    track("vertrekpunt-voorbeeld");
   });
   $("chips").append(a);
 }
@@ -501,6 +524,7 @@ $("locate").addEventListener("click", () => {
       if (cellOf(lat, lon) < 0) return toast("Je locatie ligt buiten de kaart (Nederland en de grensstreek)");
       toastEl.hidden = true;
       goTo(lat, lon, "", 11);
+      track("vertrekpunt-locatie");
     },
     (err) => toast(err.code === err.PERMISSION_DENIED ? "Geen toestemming voor je locatie" : "Je locatie is niet gevonden"),
     { timeout: 10000, maximumAge: 0 },
@@ -514,12 +538,14 @@ $("share").addEventListener("click", async () => {
   if (navigator.share && matchMedia("(pointer: coarse)").matches) {
     try {
       await navigator.share({ title: `OV-afstand vanaf ${$("origin").textContent}`, url });
+      track("gedeeld-menu");
     } catch { /* geannuleerd */ }
     return;
   }
   try {
     await navigator.clipboard.writeText(url);
     toast("Link gekopieerd");
+    track("gedeeld-kopie");
   } catch {
     prompt("Kopieer deze link:", url);
   }

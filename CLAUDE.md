@@ -8,7 +8,7 @@ Website met een kaart van NL. De heatmap toont de reistijd met OV plus fiets van
 ## Stand van zaken
 Fase 0, 1, 2 en 3 (realistisch fietsen) zijn klaar. Een eigen OSRM-server draait in WSL.
 
-De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en een halte die start in 3 × 3 cellen. Dijkstra met een bucketwachtrij in de browser kost ±0,5 s voor heel NL. In proefregio's wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3. Het raster is gebouwd op een OSM-extract van NL plus de strook BE/DE binnen de rasterbox (`build_bike_grid.py` → `export_bike_grid.py` → `web/public/data/bike.bin.gz`, 4,25 MB). Het is ingebouwd in de web-app (`bikegrid.ts`, standaard aan). Van de 578 ponten in OSM doen er 525 mee. De rest ontbreekt door OSM zelf (laagwaterafsluiting, losse aanlegplaats). Fase 6.1 (snelle winst) is klaar op branch `fase6`: instellingen in de deellink, delen, Open Graph en favicon, uitleg, mijn locatie en voorbeeldchips. Volgende stap: bezoekers meten (6.2), dan de smartphone (6.3); zie het plan.
+De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en een halte die start in 3 × 3 cellen. Dijkstra met een bucketwachtrij in de browser kost ±0,5 s voor heel NL. In proefregio's wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3. Het raster is gebouwd op een OSM-extract van NL plus de strook BE/DE binnen de rasterbox (`build_bike_grid.py` → `export_bike_grid.py` → `web/public/data/bike.bin.gz`, 4,25 MB). Het is ingebouwd in de web-app (`bikegrid.ts`, standaard aan). Van de 578 ponten in OSM doen er 525 mee. De rest ontbreekt door OSM zelf (laagwaterafsluiting, losse aanlegplaats). Fase 6.1 (snelle winst) is klaar op branch `fase6`: instellingen in de deellink, delen, Open Graph en favicon, uitleg, mijn locatie en voorbeeldchips. Fase 6.2 (bezoekers meten met GoatCounter, `ovafstand.goatcounter.com`) is klaar. Volgende stap: de smartphone (6.3); zie het plan.
 
 **Afspraak:** na elke afgeronde stap de resultaten en de volgende stap bijwerken in ONTWIKKELPLAN.md, en de stand van zaken hier.
 
@@ -56,6 +56,7 @@ De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en
 - Zoeken gaat via de PDOK Locatieserver (`/search/v3_1/free`) plus de treinstations uit de graaf.
 - **Deellink:** `#lat,lon,naam&w=…&v=…&b=…&d=…&t=…&f=…`, met alleen afwijkingen van `DEFAULTS` in `main.ts`. Ongeldige waarden worden genegeerd (zie README).
 - `og:image` wijst naar de volledige Pages-URL (`corvanessen.github.io/OVafstand/og.png`).
+- **Bezoekers:** GoatCounter via `track("naam")` in `main.ts`. Stuur alleen namen van gebeurtenissen mee, nooit coördinaten of adressen. Op localhost telt het niet.
 
 ## Verifiëren
 - **Pipeline:** `python pipeline/heatmap.py 52.0894 5.11 "Utrecht Centraal" 0`. De reistijden moeten overeenkomen met de validatie hierboven.
