@@ -238,8 +238,9 @@ Fase 3, realistisch fietsen:
 - ~~De grootte omlaag brengen en de uitschieters in Utrecht begrijpen.~~ Klaar (stap 5): start in 3 × 3 cellen, 4 bits, ±3–4 MB, fout > 5 min bij <1%.
 - ~~Het fietsraster voor heel NL bouwen.~~ Klaar (stap 6): `bike.bin.gz`, 2,25 MB.
 - ~~Het fietsraster inbouwen in de web-app.~~ Klaar (stap 7).
-- **Nu:** het grensextract (strook BE en DE) en fietspontjes controleren.
-- Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
+- ~~Het grensextract (strook BE en DE) en fietspontjes controleren.~~ Klaar (stap 8). Daarmee is fase 3 af.
+- ~~Fase 6.1, snelle winst.~~ Klaar, zie "Resultaten fase 6.1".
+- **Nu:** bezoekers meten (6.2), daarna de smartphone (6.3). Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -403,9 +404,45 @@ Het raster is nu in de mediaan 4–7% te lang, zonder correctiefactor. De NL-gro
 **Volgende stap:**
 1. ~~Het fietsraster voor heel NL bouwen en de echte grootte meten.~~ Klaar (stap 6): 2,25 MB gzip.
 2. ~~Het inbouwen in de web-app.~~ Klaar (stap 7).
-3. **Nu:** het grensextract met een strook BE en DE, en controleren of fietspontjes meedoen.
+3. ~~Het grensextract met een strook BE en DE, en controleren of fietspontjes meedoen.~~ Klaar (stap 8).
 
 Het plan was om tijdens het slepen de kegels te tonen en na het loslaten het fietsraster. Dat is niet nodig: het raster is even snel als de kegels.
+
+### Resultaten fase 3, stap 8: grensextract en veerponten (14 okt 2026)
+
+**Grensextract:**
+- `osrm_setup.sh grens` haalt de Geofabrik-extracten van NL, België, Noordrijn-Westfalen en Nedersaksen, knipt ze met `osmium` op de rasterbox (3,2–7,4 O, 50,6–53,7 N) en voegt ze samen tot `grens.osm.pbf`. `osmium` draait in een eigen image (`osmium-tool`, Debian), omdat er geen sudo is.
+  - Downloaden met `curl`: `wget` kon in WSL de naam van Geofabrik niet oplossen (alleen IPv6).
+  - Verwerken met OSRM kost ±25 min. `start` kiest het grensextract als dat er is.
+- **Het raster opnieuw gebouwd** in `data/bike_grid/grens/` → `grens_raw.npz`. De oude NL-versie (`nl/`, `nl_raw.npz`) blijft om te vergelijken.
+  - Netto ±2,3 uur, tegen ±80 min voor NL alleen: de zuidelijke rijen zijn nu overal land (±1,3 min per rij).
+  - Halverwege liep OSRM weer vast (±820% CPU, time-outs), net als in stap 6, maar bij een andere rij. Het lag dus niet aan één blok. `build_bike_grid.py` herstart de container nu zelf bij een time-out (120 s) en wacht tot OSRM weer antwoordt.
+- **Resultaat:**
+  - 979.738 knopen (61,9% van de cellen), tegen 499.066.
+  - Na snoeien 5,43 mln kanten.
+  - Halteplekken zonder startcel: 358, tegen 6.286. Daarvan liggen er 356 buiten de rasterbox (West-Vlaanderen ten westen van 3,2° O, verre Duitse ICE-haltes).
+- **`bike.bin.gz` is nu 4,25 MB** (was 2,25). Een strook van 15 km rond de halteplekken (de maximale fietsgrens vanaf een halte) zou maar 11% van de knopen schelen, want De Lijn dekt heel Vlaanderen. Daarom het volle raster; fase 5 heeft het toch nodig.
+- **Rekentijd** (Node): laden 380 ms (was 210). De kaart kost vanaf Utrecht C 233 ms, vanaf Venlo 103 ms, vanaf Maastricht 68 ms. Dat is gelijk aan het NL-raster, want de fietsgrenzen bepalen hoeveel cellen bereikt worden, niet de grootte van het raster.
+- **Over de grens** (raster, min):
+
+| Van → naar | NL-raster | Grensraster | Kegels |
+|---|---|---|---|
+| Venlo → Straelen (DE) | – | 51 | 57 |
+| Venlo → Lanaken (BE) | 105 | 105 | 104 |
+| Maastricht C → Lanaken (BE) | 26 | 26 | 26 |
+| Utrecht C → Emmerich (DE) | 107 | 108 | 106 |
+
+  Vanaf Utrecht C kleurt het grensraster iets minder cellen (562k tegen 572k), omdat de Belgische haltes nu over de weg fietsen in plaats van met een kegel.
+- **In Chrome** (headless, vanaf Venlo): de heatmap loopt langs de wegen door naar Straelen, Viersen, Brüggen en Belgisch Limburg. De tooltip bij Straelen geeft "Fiets 59 min". De statusregel toont netwerk 46–115 ms en kaart 330–560 ms (software-rendering). De console geeft geen fouten.
+
+**Veerponten** (`pipeline/bike_ferry_check.py`):
+- **Methode.** De ponten komen uit OSM (`osmium tags-filter … w/route=ferry`, `osmium export` naar `data/bike_grid/ferries.geojsonseq`). Per pont zoekt het script de kortste weg door het raster tussen de knopen bij beide aanlegplaatsen, met de ruwe OSRM-afstanden. "Mee" betekent hooguit 1,3 × de pontlengte + 1 km.
+- **Uitkomst.** Van de 578 pontlijnen doen er 525 mee (NL-raster: 527). Het verschil zijn alleen de Borkum-veren, die nu knopen aan Duitse kant hebben.
+- **De ponten die niet meedoen liggen aan OSM, niet aan de pijplijn:**
+  - **Laag water.** Bronkhorsterveer, Dommerholtsveer (Gorssel–Wilp) en Kozakkenveer: sinds 5 aug 2026 staan de aanloopwegen op `access=no` met de notitie "pont vaart niet ivm laag water". Ook de publieke OSRM-server neemt ze niet. Dat herstelt zich bij een OSM-update nadat de notitie weg is; dan het raster opnieuw bouwen.
+  - **Losse aanlegplaats.** Bijvoorbeeld Gorinchem–Woudrichem: het eindpunt in Woudrichem zit alleen aan andere ponten vast, niet aan een weg.
+  - **Grote veerboten** (Waddeneilanden, Zierikzee, Noordzee): die ontbreken deels. Dat geeft niet, want ze zitten in de GTFS en zijn langer dan elke fietsgrens.
+- **Beperking.** OSRM rekent een pont als fietsafstand. De wachttijd en de dienstregeling van kleine ponten (vaak alleen in de zomer) tellen niet mee.
 
 ## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
 
@@ -511,6 +548,41 @@ Technisch is het steeds hetzelfde: twee Dijkstra-runs, twee rasters met minuten 
 - Welke vraag komt eerst?
 - Ook drie of meer punten? Dan werkt max nog, het verschil niet.
 - Combineren met de animatie? Pas na 6.4.
+
+### Resultaten fase 6.1: snelle winst (14 okt 2026)
+
+Begonnen met 6.1 in plaats van 6.2 (keuze van de gebruiker). Op branch `fase6`.
+- **Instellingen in de deellink.** De sleutels zijn `w v b d t` uit het plan, plus `f` voor de schakelaar "fietsen over de weg" (zie README, "Deellink").
+  - De naam stopt bij de eerste `&`. Een `&` in een naam blijft werken, want die is gecodeerd als `%26`.
+  - Een waarde telt alleen als het invoerveld hem kan tonen: binnen min/max en op de stap van de schuif, of een bestaande optie. Zo levert `d=99` de standaard op.
+  - Elke wijziging werkt de hash bij via `replaceState`.
+  - Een `hashchange` (een geplakte of getypte link) zet ontbrekende instellingen terug op de standaard.
+- **Deelknop.** Op een touchscherm (`pointer: coarse`) `navigator.share()`, anders kopiëren naar het klembord met de melding "Link gekopieerd". Lukt kopiëren niet, dan verschijnt de link in een `prompt`.
+- **Open Graph en favicon.**
+  - `og:image` is `https://corvanessen.github.io/OVafstand/og.png`, een volledige URL zoals crawlers die willen. Bij een eigen domein aanpassen.
+  - `og.png` (1200 × 630, 495 kB) is een screenshot van heel NL vanaf Utrecht C, met alleen de titel en de legenda in het paneel.
+  - `favicon.svg` heeft concentrische banden uit de kleurschaal en het vertrekpunt in het midden.
+- **Uitleg.**
+  - Een nieuwe ondertitel: "Hoe lang ben je met trein, bus en fiets onderweg naar elke plek in Nederland?"
+  - Een blok "Hoe werkt dit?" over de kleuren, de opbouw van een reis, realistisch en optimistisch, de beperkingen en de bronnen.
+  - De modellen heten nu "Realistisch (met gemiddelde wachttijd)" en "Optimistisch (geen wachttijd)".
+- **Mijn locatie.**
+  - `navigator.geolocation` met `maximumAge: 0`, zodat een tweede klik geen oude positie oplevert.
+  - Buiten het raster verschijnt "Je locatie ligt buiten de kaart". Bij weigeren verschijnt "Geen toestemming".
+- **Voorbeeldchips.** Amsterdam C, Groningen, Middelburg, Terschelling en Winterswijk.
+  - Elke chip is een gewone deellink, dus ook in een nieuw tabblad te openen.
+  - Een gewone klik houdt de instellingen vast.
+- **Klein.** Het legendalabel "3 u" brak af over twee regels; nu `nowrap`.
+- **Getest in headless Chrome:**
+  - een link met `&w=0&t=120&b=7.5&x=3&d=99&f=0` en een naam met `&`;
+  - de hash na een schuif;
+  - een chip;
+  - delen met het klembord;
+  - mijn locatie in Eindhoven en in Parijs, via `Emulation.setGeolocationOverride`;
+  - een `hashchange` terug naar de standaard;
+  - het favicon.
+
+  Alles OK, zonder consolefouten. Ook gecontroleerd: `tsc`, `npm run build` en een screenshot op 390 px breed. Op een echt toestel is het nog niet getest: `navigator.share` en de locatie.
 
 ### 6.6 Volgorde
 

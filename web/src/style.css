@@ -79,15 +79,42 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 .origin-marker { cursor: grab; width: 20px; height: 20px; }
 .hint { color: var(--muted); font-size: 12px; margin: 6px 0 12px; }
 
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip {
+  padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--fg); text-decoration: none; font-size: 12px; white-space: nowrap;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.actions { display: flex; gap: 8px; margin-top: 10px; }
+.small-btn {
+  flex: 1;
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer;
+}
+.small-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+#about p { margin: 0 0 8px; line-height: 1.45; }
+#about .credits { color: var(--muted); font-size: 12px; }
+#about + .status { margin-top: 10px; }
+
+#toast {
+  position: absolute; left: 50%; bottom: 32px; transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  background: var(--fg); color: #fff; border-radius: 8px; padding: 9px 14px;
+  font-size: 14px; box-shadow: var(--shadow); z-index: 4;
+}
+#toast[hidden] { display: none; }
+
 .legend-wrap { margin: 4px 0 18px; }
 #legend { display: flex; height: 12px; border-radius: 3px; overflow: hidden; }
 #legend span { flex: 1; }
 #legendLabels { position: relative; height: 14px; font-size: 11px; color: var(--muted); margin-top: 3px; }
-#legendLabels span { position: absolute; transform: translateX(-50%); }
+#legendLabels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 #legendLabels span:first-child { transform: none; }
 #legendLabels span:last-child { transform: translateX(-100%); }
 
 details { border-top: 1px solid var(--line); padding-top: 10px; }
+details + details { margin-top: 8px; }
 summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
 fieldset { border: 0; padding: 0; margin: 0 0 10px; }
 fieldset legend { font-size: 12px; color: var(--muted); margin-bottom: 4px; }

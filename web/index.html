@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OV-afstand</title>
     <meta name="description" content="Hoe lang ben je met OV en fiets onderweg naar elke plek in Nederland?" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <!-- deelvoorbeeld; crawlers lezen de hash niet, dus het is voor elke link hetzelfde.
+         og:image moet een volledige URL zijn: aanpassen bij een eigen domein -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="nl_NL" />
+    <meta property="og:title" content="OV-afstand: reistijd met OV en fiets" />
+    <meta property="og:description" content="Kies een vertrekpunt en zie hoe lang je met trein, bus en fiets onderweg bent naar elke plek in Nederland." />
+    <meta property="og:url" content="https://corvanessen.github.io/OVafstand/" />
+    <meta property="og:image" content="https://corvanessen.github.io/OVafstand/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Kaart van Nederland, gekleurd naar reistijd vanaf Utrecht Centraal" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="app" class="loading">
@@ -14,7 +27,7 @@
         <header>
           <div>
             <h1>OV-afstand</h1>
-            <p class="sub">Reistijd met OV + fiets naar heel Nederland</p>
+            <p class="sub">Hoe lang ben je met trein, bus en fiets onderweg naar elke plek in Nederland?</p>
           </div>
           <button id="panelToggle" class="icon-btn" aria-label="Paneel in- of uitklappen">▾</button>
         </header>
@@ -24,6 +37,7 @@
             <input id="q" type="search" placeholder="Zoek adres, plaats of station…" autocomplete="off" />
             <ul id="results" hidden></ul>
           </div>
+          <div class="chips" id="chips"></div>
 
           <div class="origin-row">
             <span class="dot"></span>
@@ -31,6 +45,10 @@
               <div class="label">Vertrekpunt</div>
               <div id="origin">…</div>
             </div>
+          </div>
+          <div class="actions">
+            <button id="locate" class="small-btn" title="Vertrek vanaf je huidige locatie">⌖ Mijn locatie</button>
+            <button id="share" class="small-btn" title="Deel een link naar deze kaart, met je instellingen">↗ Delen</button>
           </div>
           <p class="hint">Klik op de kaart of sleep de punt om het vertrekpunt te verplaatsen.</p>
 
@@ -43,8 +61,8 @@
             <summary>Instellingen</summary>
             <fieldset>
               <legend>Model</legend>
-              <label><input type="radio" name="model" value="0" /> Ideaal: alleen rijtijd</label>
-              <label><input type="radio" name="model" value="0.5" /> Met wachttijd (½ interval per instap)</label>
+              <label><input type="radio" name="model" value="0.5" /> Realistisch (met gemiddelde wachttijd)</label>
+              <label><input type="radio" name="model" value="0" /> Optimistisch (geen wachttijd)</label>
             </fieldset>
             <fieldset>
               <legend>Fietsen</legend>
@@ -70,6 +88,19 @@
             </label>
           </details>
 
+          <details id="about">
+            <summary>Hoe werkt dit?</summary>
+            <p>Elke kleur is een kwartier reistijd, van groen (dichtbij) naar paars. Zonder kleur: niet bereikbaar binnen de kleurschaal.
+              Beweeg over de kaart voor de reistijd en de route; klik om daar te vertrekken.</p>
+            <p>Een reis is: fietsen naar een halte, met trein, bus, tram, metro of veerboot verder, en het laatste stuk weer fietsen.
+              Of de hele reis fietsen, als dat sneller is. Het fietsen gaat over echte wegen en fietspaden uit OpenStreetMap.</p>
+            <p><b>Realistisch</b> telt bij elke instap de helft van de tijd tussen twee vertrekken als wachttijd (hooguit 30 min).
+              <b>Optimistisch</b> doet alsof je overstap altijd klaarstaat.</p>
+            <p><b>Beperkingen.</b> De kaart rekent met een gewone werkdag overdag (07–19 u); 's avonds en in het weekend duurt het vaak langer.
+              Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
+            <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.</p>
+          </details>
+
           <p id="status" class="status">Netwerk laden…</p>
           <footer>
             Dienstregeling van <span id="dataDate">…</span> (werkdag, 07–19 u) · overstappen kost 0 min ·
@@ -79,6 +110,7 @@
       </aside>
 
       <div id="tooltip" hidden></div>
+      <div id="toast" role="status" aria-live="polite" hidden></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

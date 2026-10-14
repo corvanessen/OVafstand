@@ -2,7 +2,7 @@
 
 Gebruik:  python pipeline/export_bike_grid.py
 
-Leest data/bike_grid/nl_raw.npz (van build_bike_grid.py) en schrijft web/public/data/bike.bin.gz.
+Leest data/bike_grid/grens_raw.npz (van build_bike_grid.py) en schrijft web/public/data/bike.bin.gz.
 Keuzes (zie ONTWIKKELPLAN.md, fase 3, stap 5):
   - 4 bits per kant, 15 niveaus van de omrijfactor t.o.v. de rechte lijn tussen de celmiddens, 15 = geen kant;
     factoren boven ±5 worden "geen kant", nooit naar beneden afgerond (anders sluiproutes over water);
@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW = ROOT / "data" / "bike_grid" / "nl_raw.npz"
+RAW = ROOT / "data" / "bike_grid" / "grens_raw.npz"
 OUT = ROOT / "web" / "public" / "data" / "bike.bin.gz"
 
 LEVELS = np.array([1.0, 1.04, 1.08, 1.13, 1.19, 1.26, 1.35, 1.46, 1.6, 1.8, 2.05, 2.4, 2.9, 3.6, 4.5])

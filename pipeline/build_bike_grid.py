@@ -2,16 +2,21 @@
 
 Gebruik:  python pipeline/build_bike_grid.py [YYYYMMDD]
 
+De OSRM-server moet het grensextract draaien (bash pipeline/osrm_setup.sh grens): NL plus de strook
+BE en DE binnen het raster. Tot stap 8 was dat alleen NL (data/bike_grid/nl/ en nl_raw.npz).
+
 Per rastercel (zelfde raster als web/src/grid.ts) de wegafstand naar 8 buren "vooruit"
 (16 richtingen: O, N, NO, NW en de paardensprongen), en per halteplek de afstand naar de
 knopen van de 3 × 3 cellen eromheen. De keuzes en metingen staan in ONTWIKKELPLAN.md (fase 3, stap 3–5).
 
-Het script is te onderbreken: elke rij blokken wordt apart bewaard in data/bike_grid/nl/
-en bij een nieuwe start overgeslagen. Resultaat: data/bike_grid/nl_raw.npz met de ruwe
+Het script is te onderbreken: elke rij blokken wordt apart bewaard in data/bike_grid/grens/
+en bij een nieuwe start overgeslagen. Resultaat: data/bike_grid/grens_raw.npz met de ruwe
 OSRM-afstanden (float32, meters). Het coderen voor de browser (4 bits, snoeien) is een aparte stap.
 """
 import json
+import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -22,8 +27,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 DATE = sys.argv[1] if len(sys.argv) > 1 else "20261110"
 OSRM = "http://localhost:5000/table/v1/bike/"
+CONTAINER = "osrm-fiets"   # zie osrm_setup.sh
 OUT = ROOT / "data" / "bike_grid"
-PARTS = OUT / "nl"
+PARTS = OUT / "grens"
 
 BLOCK = 8          # cellen per blok per OSRM-verzoek
 THREADS = 8
@@ -48,6 +54,26 @@ clat = invLat(Y0 + (np.arange(NY) + 0.5) * CELL)          # per rij
 clon = invLon(X0 + (np.arange(NX) + 0.5) * CELL)          # per kolom
 
 
+_restart_lock = threading.Lock()
+_last_restart = [0.0]
+
+
+def restart_osrm():
+    """OSRM blijft soms hangen op ±800% CPU (fase 3, stap 6 en 8). Dan helpt alleen een herstart van de container."""
+    with _restart_lock:
+        if time.time() - _last_restart[0] < 600:   # net al herstart door een andere thread
+            return
+        print("  OSRM hangt: container herstarten", flush=True)
+        subprocess.run(["wsl", "-e", "/usr/bin/docker", "restart", CONTAINER], check=False)
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(f"{OSRM}5.11,52.09;5.12,52.10", timeout=10).read()
+                break
+            except Exception:
+                time.sleep(5)
+        _last_restart[0] = time.time()
+
+
 def table(lats, lons, sources=None, destinations=None):
     coords = ";".join(f"{x:.6f},{y:.6f}" for x, y in zip(lons, lats))
     q = "annotations=distance"
@@ -57,10 +83,12 @@ def table(lats, lons, sources=None, destinations=None):
         q += "&destinations=" + ";".join(map(str, destinations))
     for attempt in range(5):
         try:
-            with urllib.request.urlopen(f"{OSRM}{coords}?{q}", timeout=300) as resp:
+            with urllib.request.urlopen(f"{OSRM}{coords}?{q}", timeout=120) as resp:
                 return json.load(resp)
         except Exception as err:
-            print(f"  fout ({err}), poging {attempt + 1}")
+            print(f"  fout ({err}), poging {attempt + 1}", flush=True)
+            if "timed out" in str(err):
+                restart_osrm()
             time.sleep(5 * (attempt + 1))
     raise RuntimeError("OSRM (localhost:5000) onbereikbaar; start met: bash pipeline/osrm_setup.sh start")
 
@@ -150,10 +178,10 @@ def build_seeds():
 def main():
     snap, road = build_grid()
     oj, oi, seed_dist, seed_snap = build_seeds()
-    np.savez_compressed(OUT / "nl_raw.npz", snap=snap, road=road, dirs=np.array(DIRS),
+    np.savez_compressed(OUT / "grens_raw.npz", snap=snap, road=road, dirs=np.array(DIRS),
                         seed_j=oj, seed_i=oi, seed_dist=seed_dist, seed_snap=seed_snap, seed_r=SEED_R)
     node = snap <= 250
-    print(f"klaar: {OUT / 'nl_raw.npz'}")
+    print(f"klaar: {OUT / 'grens_raw.npz'}")
     print(f"cellen met een fietsbare weg binnen 250 m: {node.sum()} van {node.size} ({node.mean():.1%})")
     print(f"kanten: {np.isfinite(road).sum()}, halteplekken met een weg binnen 250 m: {(seed_snap <= 250).mean():.1%}")
 
