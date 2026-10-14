@@ -6,16 +6,24 @@ Website met een kaart van NL. De heatmap toont de reistijd met OV plus fiets van
 - Communicatie, commentaar en UI-teksten zijn in het **Nederlands**.
 
 ## Stand van zaken
-Fase 0, 1 en 2 zijn klaar. Volgende stap: fase 3, realistisch fietsen via OSRM en OSM (zie het plan).
+Fase 0, 1 en 2 zijn klaar. Fase 3 (realistisch fietsen) loopt:
+- de meting van hemelsbreed × 1,3 is klaar;
+- een eigen OSRM-server draait in WSL.
+
+De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en een halte die start in 3 × 3 cellen. Dijkstra met een bucketwachtrij in de browser kost ±0,5 s voor heel NL. In proefregio's wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3. Het raster voor heel NL is gebouwd (`build_bike_grid.py` → `export_bike_grid.py` → `web/public/data/bike.bin.gz`, 2,25 MB) en ingebouwd in de web-app (`bikegrid.ts`, standaard aan). Volgende stap: het grensextract (strook BE en DE) en fietspontjes controleren (zie het plan).
+
+**Afspraak:** na elke afgeronde stap de resultaten en de volgende stap bijwerken in ONTWIKKELPLAN.md, en de stand van zaken hier.
 
 ## Omgeving (Windows)
 - Python 3.13 werkt alleen via **PowerShell** (`python ...`). In Git Bash geeft `python` "Permission denied" (WindowsApps-stub). Beschikbaar: pandas, numpy, scipy, matplotlib. Geen polars of pyarrow, dus tussenbestanden zijn `.pkl` en `.npz`.
 - Node 24. Web-commando's: `npm --prefix web run dev | build`, typecheck `npx tsc --noEmit` (in `web/`).
 - **Let op bij het bewerken van bestanden via PowerShell** (`Get-Content`/`Set-Content` zonder `-Encoding utf8`): UTF-8 raakt dan dubbel gecodeerd ("…" wordt "â€¦"). Gebruik de Edit-tool of Node.
+- **WSL2 (Ubuntu 26.04) met `docker.io`** voor OSRM, zonder sudo. Vanuit PowerShell: `wsl -e bash -lc "..."`, en gebruik `/usr/bin/docker` (de `docker` van Docker Desktop in het PATH werkt niet). De fietsserver staat op `localhost:5000` (`pipeline/osrm_setup.sh start`).
 - `.claude/launch.json` bevat de previewservers `web` (dev, :5173) en `web-build` (preview, :4173).
 
 ## Datapijplijn (`pipeline/`)
 - Volgorde: `extract_day.py <YYYYMMDD>` → `build_graph.py` → `export_web.py`. `stats.py` en `heatmap.py` zijn voor analyse.
+- Fietsraster (fase 3): `build_bike_grid.py` (OSRM op localhost:5000; ±80 min, te onderbreken) → `export_bike_grid.py`. Na een nieuwe GTFS-dag zijn de startcellen per halteplek opnieuw nodig. `bike_check.py`, `bike_grid_test.py` en `grid_bench.mjs` zijn metingen.
 - Bron: `http://gtfs.ovapi.nl/nl/gtfs-nl.zip` (±260 MB) naar `data/raw/`. `data/` staat niet in git.
 - Kies een dinsdag of woensdag buiten de schoolvakanties, binnen `feed_start_date`..`feed_end_date` (feed_info.txt).
 - `web/public/data/{graph.bin,meta.json}` staat **wel** in git. Opnieuw genereren na een data-update.
@@ -37,6 +45,12 @@ Fase 0, 1 en 2 zijn klaar. Volgende stap: fase 3, realistisch fietsen via OSRM e
   - De eigen worker van MapLibre moet expliciet via `setWorkerUrl(url)` met `import url from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url"` en `worker.format: "es"` in vite.config. Anders: "Worker failed to load".
 - **TypeScript 7, Vite 8.**
 - Het raster staat in **Web Mercator** (`grid.ts`), zodat het als ImageSource zonder vervorming op de kaart past. `ROW_SCALE` zet per rij mercator-meters om naar echte meters.
+- **Fietsraster (`bikegrid.ts`):**
+  - Laadt `bike.bin.gz` na de graaf; tot dan, of als het ontbreekt, rekent de kaart met kegels (`raster.ts`).
+  - Twee Dijkstra-runs met een bucketwachtrij: vanaf het vertrekpunt (directMaxKm; dat geeft ook de begintijden voor `search`), dan vanaf de bereikte haltes (bikeMaxKm).
+  - Haltes zonder startcellen (België) tekenen nog kegels.
+  - De schakelaar `realBike` zet het uit.
+- **Testen zonder browser-tool:** Chrome headless via CDP (`--remote-debugging-port`) werkt voor de status, de tooltip, zoeken en screenshots. De rekenkern los in Node: bundel met `npx rolldown <test.ts> --platform node` (in `web/`).
 - **Water-masker:** de heatmap-laag ligt vóór de eerste `transportation`-laag, met daarboven een kopie van de `water`-filllagen uit de OpenFreeMap Positron-stijl.
 - **Interactie:**
   - Met de muis: hover toont reistijd en route, klikken zet het vertrekpunt.
@@ -46,7 +60,7 @@ Fase 0, 1 en 2 zijn klaar. Volgende stap: fase 3, realistisch fietsen via OSRM e
 ## Verifiëren
 - **Pipeline:** `python pipeline/heatmap.py 52.0894 5.11 "Utrecht Centraal" 0`. De reistijden moeten overeenkomen met de validatie hierboven.
 - **Web:** typecheck, daarna de dev-server. Controleer:
-  - de heatmap verschijnt, en de statusregel toont "netwerk ~50 ms · kaart ~250 ms";
+  - de heatmap verschijnt, en de statusregel toont "netwerk ~50–100 ms · kaart ~250–400 ms", en de voetregel "fietsen over de weg (OpenStreetMap)";
   - de tooltip toont een route;
   - zoeken naar "Ruinen" werkt;
   - geen fouten in de console.

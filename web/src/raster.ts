@@ -12,7 +12,15 @@ export interface Raster {
   via: Int32Array; // halteplek van de laatste fietsrit, VIA_DIRECT of VIA_NONE
 }
 
-function cone(
+export function newRaster(): Raster {
+  return {
+    time: new Float32Array(NX * NY).fill(Infinity),
+    via: new Int32Array(NX * NY).fill(VIA_NONE),
+  };
+}
+
+/** hemelsbrede fietskegel (× DETOUR) rond (cx, cy) in mercator-meter, vanaf tijd t0 (s) */
+export function cone(
   r: Raster, cx: number, cy: number, t0: number, maxM: number, vMs: number, id: number, tMax: number,
 ) {
   const { time, via } = r;
@@ -44,10 +52,7 @@ function cone(
 }
 
 export function rasterize(g: Graph, s: Search, lat: number, lon: number, p: Params): Raster {
-  const r: Raster = {
-    time: new Float32Array(NX * NY).fill(Infinity),
-    via: new Int32Array(NX * NY).fill(VIA_NONE),
-  };
+  const r = newRaster();
   const v = p.bikeKmh / 3.6;
   const tMax = p.tMaxMin * 60;
   cone(r, mercX(lon), mercY(lat), 0, p.directMaxKm * 1000, v, VIA_DIRECT, tMax);

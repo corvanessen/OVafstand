@@ -11,9 +11,14 @@ pipeline/            Python: GTFS → graaf → binaire bestanden voor de browse
   build_graph.py     statische graaf (model A/A+) → data/day_<datum>/graph.npz
   heatmap.py         prototype: one-to-all + PNG-heatmap (matplotlib)
   export_web.py      graph.npz → web/public/data/{graph.bin, meta.json}
+  osrm_setup.sh      eigen OSRM-fietsserver in WSL (Ubuntu + Docker), localhost:5000
+  build_bike_grid.py fietsraster: wegafstanden per cel naar 16 buren, via OSRM
+  export_bike_grid.py  fietsraster → web/public/data/bike.bin.gz
+  bike_check.py, bike_grid_test.py, grid_bench.mjs   metingen uit fase 3
 web/                 Vite + TypeScript + MapLibre
   src/router.ts      graph.bin laden, Dijkstra, route-uitleg
-  src/raster.ts      fietskegels → raster van 250 m, kleuren
+  src/bikegrid.ts    bike.bin.gz laden, Dijkstra over het fietsraster
+  src/raster.ts      fietskegels (hemelsbreed) → raster van 250 m, kleuren
   src/grid.ts        Web Mercator-raster dat precies op de kaart past
   src/worker.ts      Web Worker, houdt graaf en laatste resultaat vast
   src/main.ts        kaart, zoekbalk (PDOK), instellingen, tooltip
@@ -48,7 +53,7 @@ De bron is de complete NL-dienstregeling in GTFS-formaat (NDOV Loket / OVapi, ±
 ### 2. Zoeken: Dijkstra, one-to-all (browser)
 
 - In de browser draait **Dijkstra** met een binaire heap ([router.ts](web/src/router.ts)). Er wordt niet naar één bestemming gezocht, maar naar *alle* halteplekken tegelijk (*one-to-all*).
-- **Beginwaarden:** de fietstijd naar elke halteplek binnen de fietsgrens vanaf het vertrekpunt. De fietsafstand is hemelsbreed × 1,3, bij de ingestelde snelheid.
+- **Beginwaarden:** de fietstijd naar elke halteplek binnen de fietsgrens vanaf het vertrekpunt, over de weg via het fietsraster (zie 3). Met het fietsraster uit, of voor haltes buiten het raster, is het hemelsbreed × 1,3.
 - **Wachttijd:** een instapkant kost `min(wachtfactor × interval, 30 min)`.
   - Wachtfactor 0 is model A: alleen rijtijd.
   - Wachtfactor ½ is model A+: gemiddeld een half interval wachten.
@@ -58,17 +63,22 @@ De bron is de complete NL-dienstregeling in GTFS-formaat (NDOV Loket / OVapi, ±
 
 Waarom geen dienstregelingsalgoritme zoals CSA of RAPTOR? Een statische graaf geeft één tijdloos antwoord, is klein genoeg voor de browser en klopt goed met de NS-reistijden. Dienstregelingsmodus is gepland voor fase 4, zie het [plan](ONTWIKKELPLAN.md).
 
-### 3. De laatste kilometer: fietskegels op een raster
+### 3. De laatste kilometer: fietsen over een raster
 
 - Nederland is verdeeld in een raster van **1.147 × 1.380 cellen van ±250 m**. Fietsen gaat met 15 km/u ±250 m per minuut, dus kleinere cellen voegen niets toe.
-- Elke bereikte halteplek tekent een "kegel" in het raster ([raster.ts](web/src/raster.ts)): `T(s) + fietstijd`, tot maximaal de fietsgrens.
-- Vanaf het vertrekpunt tekent een kegel voor direct fietsen.
+- **Fietsraster** ([bikegrid.ts](web/src/bikegrid.ts)), standaard aan:
+  - Offline is met een eigen OSRM-server (fietsprofiel, OpenStreetMap) per cel de wegafstand naar 16 buren berekend. Dat is opgeslagen als 4 bits per kant in `bike.bin.gz` (2,25 MB). Water zonder brug heeft dus geen kant.
+  - Per halteplek is de afstand naar de 3 × 3 cellen eromheen bewaard. Daar begint het fietsen vanaf een halte.
+  - In de browser loopt Dijkstra met een bucketwachtrij over het raster: eerst vanaf het vertrekpunt (fietsgrens vanaf vertrekpunt), daarna vanaf alle bereikte haltes tegelijk (fietsgrens vanaf halte).
+  - Cellen zonder weg binnen 250 m (weiland, water) krijgen de tijd van de dichtstbijzijnde cel, tot 750 m ver.
+  - Meting: in Zeeland en Utrecht wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3 (zie het [plan](ONTWIKKELPLAN.md), fase 3).
+- **Kegels** ([raster.ts](web/src/raster.ts)): met het fietsraster uit, en voor haltes buiten het raster (België), tekent elke bereikte halteplek een "kegel": `T(s) + fietstijd` met hemelsbreed × 1,3, tot maximaal de fietsgrens.
 - Elke cel houdt het minimum, en onthoudt welke halte dat minimum leverde.
 - Daarna krijgt elke cel een kleur: een band per 15 minuten.
 
 ### 4. Waarom een nieuwe kaart zo snel klaar is
 
-Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De statusregel meet het: "netwerk ~50 ms · kaart ~250 ms". Daar zijn deze redenen voor:
+Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De statusregel meet het: "netwerk ~50–100 ms · kaart ~250–400 ms". Het fietsraster laadt na de graaf (±0,5 s); tot dan rekent de kaart met kegels. Daar zijn deze redenen voor:
 
 - **Het zware werk is al gedaan.**
   - De dienstregeling (miljoenen stoptijden) is vooraf samengevat tot ±117.000 knopen en ±287.000 kanten.
@@ -109,6 +119,16 @@ python pipeline/export_web.py 20261110
 ```
 
 Kies een dinsdag of woensdag buiten de schoolvakanties, binnen de looptijd van de feed (zie `feed_info.txt`).
+
+Het fietsraster hangt ook af van de halteplekken. Na een nieuwe GTFS-dag dus ook:
+
+```bash
+bash pipeline/osrm_setup.sh            # in Ubuntu (WSL); eenmalig, of "start" om alleen de server te starten
+python pipeline/build_bike_grid.py 20261110
+python pipeline/export_bike_grid.py
+```
+
+De rijen van het raster staan in `data/bike_grid/nl/` en worden hergebruikt. Daarna zijn alleen de startcellen per halteplek opnieuw nodig (±5 min). Voor nieuwe OSM-data verwijder je `data/bike_grid/nl/`; het hele raster kost dan ±80 min.
 
 ## Website
 

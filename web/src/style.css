@@ -11,7 +11,8 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: #e8eef2; }
+/* de pagina zelf scrollt nooit; anders verschijnt er een scrollbalk zodra de tooltip bij de rand komt */
+html, body { margin: 0; height: 100%; overflow: hidden; background: #e8eef2; }
 #app, #map { position: absolute; inset: 0; }
 
 /* ---------- paneel ---------- */

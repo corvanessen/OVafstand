@@ -25,6 +25,7 @@ export interface Params {
   bikeMaxKm: number; // max fietsafstand van de laatste halte naar de bestemming
   directMaxKm: number; // max fietsafstand vanaf het vertrekpunt (direct, of naar de eerste halte)
   tMaxMin: number; // kleurschaal en zoekgrens
+  realBike: boolean; // fietsen over de weg (fietsraster uit OSM) in plaats van hemelsbreed × DETOUR
 }
 
 export const DETOUR = 1.3; // hemelsbreed -> over de weg
@@ -113,20 +114,29 @@ class Heap {
   }
 }
 
-export function search(g: Graph, lat: number, lon: number, p: Params): Search {
+/** begintijden (s) per halteplek: hemelsbreed × DETOUR fietsen vanaf het vertrekpunt, binnen directMaxKm */
+export function straightAccess(g: Graph, lat: number, lon: number, p: Params): Float64Array {
+  const init = new Float64Array(g.nArea).fill(Infinity);
+  const v = p.bikeKmh / 3.6;
+  const accessMax = p.directMaxKm * 1000;
+  for (let a = 0; a < g.nArea; a++) {
+    const d = distM(lat, lon, g.areaLat[a], g.areaLon[a]) * DETOUR;
+    if (d <= accessMax) init[a] = d / v;
+  }
+  return init;
+}
+
+/** OV-zoektocht vanaf de halteplekken met begintijd init[a] (de fietstijd vanaf het vertrekpunt) */
+export function search(g: Graph, init: Float64Array, p: Params): Search {
   const dist = new Float64Array(g.nNode).fill(Infinity);
   const pred = new Int32Array(g.nNode).fill(-2);
   const heap = new Heap();
-  const v = p.bikeKmh / 3.6;
-  const accessMax = p.directMaxKm * 1000;
   const waitCap = p.waitCapMin * 60;
   const tMax = p.tMaxMin * 60;
 
-  // beginwaarden: fietsen naar alle halteplekken binnen bereik
   for (let a = 0; a < g.nArea; a++) {
-    const d = distM(lat, lon, g.areaLat[a], g.areaLon[a]) * DETOUR;
-    if (d <= accessMax) {
-      dist[a] = d / v;
+    if (init[a] < tMax) {
+      dist[a] = init[a];
       pred[a] = -1;
       heap.push(dist[a], a);
     }

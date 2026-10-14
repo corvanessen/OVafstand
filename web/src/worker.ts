@@ -1,8 +1,9 @@
 // Web Worker: houdt de graaf en het laatste resultaat vast, zodat de kaart soepel blijft.
 
+import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "./bikegrid";
 import { NX, NY, cellOf } from "./grid";
 import { colorize, rasterize, VIA_DIRECT, VIA_NONE, type Raster } from "./raster";
-import { loadGraph, pathTo, search, type Graph, type Params, type Search, type Segment } from "./router";
+import { loadGraph, pathTo, search, straightAccess, type Graph, type Params, type Search, type Segment } from "./router";
 
 export type Request =
   | { type: "init"; base: string }
@@ -11,7 +12,8 @@ export type Request =
 
 export type Response =
   | { type: "ready"; date: string; nArea: number; ms: number; stations: Station[] }
-  | { type: "result"; id: number; bitmap: ImageBitmap; msRoute: number; msRaster: number; reached: number }
+  | { type: "bikeReady"; ok: boolean; ms: number; nNode: number }
+  | { type: "result"; id: number; bitmap: ImageBitmap; msRoute: number; msRaster: number; reached: number; bike: boolean }
   | { type: "explain"; id: number; minutes: number | null; segments: Segment[]; lastBike: number }
   | { type: "error"; message: string };
 
@@ -37,6 +39,7 @@ function trainStations(g: Graph): Station[] {
 }
 
 let graph: Graph | null = null;
+let bike: BikeGrid | null = null;
 let last: { s: Search; r: Raster } | null = null;
 
 const post = (msg: Response, transfer: Transferable[] = []) => self.postMessage(msg, { transfer });
@@ -49,11 +52,25 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       graph = await loadGraph(m.base);
       post({ type: "ready", date: graph.date, nArea: graph.nArea, ms: performance.now() - t0,
         stations: trainStations(graph) });
+      // het fietsraster (±2 MB) komt erna; tot dan rekent de kaart hemelsbreed
+      const t1 = performance.now();
+      try {
+        bike = await loadBikeGrid(m.base, graph);
+      } catch (err) {
+        console.warn("fietsraster niet geladen:", err);
+      }
+      post({ type: "bikeReady", ok: bike !== null, ms: performance.now() - t1, nNode: bike?.nNode ?? 0 });
     } else if (m.type === "compute" && graph) {
       const t0 = performance.now();
-      const s = search(graph, m.lat, m.lon, m.params);
+      const useBike = m.params.realBike && bike !== null;
+      const init = useBike
+        ? originAccess(bike!, graph, m.lat, m.lon, m.params)
+        : straightAccess(graph, m.lat, m.lon, m.params);
+      const s = search(graph, init, m.params);
       const t1 = performance.now();
-      const r = rasterize(graph, s, m.lat, m.lon, m.params);
+      const r = useBike
+        ? rasterizeBike(bike!, graph, s, m.lat, m.lon, m.params)
+        : rasterize(graph, s, m.lat, m.lon, m.params);
       const img = colorize(r, m.params.tMaxMin);
       const canvas = new OffscreenCanvas(NX, NY);
       canvas.getContext("2d")!.putImageData(img, 0, 0);
@@ -62,7 +79,7 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       last = { s, r };
       let reached = 0;
       for (let a = 0; a < graph.nArea; a++) if (s.dist[a] < m.params.tMaxMin * 60) reached++;
-      post({ type: "result", id: m.id, bitmap, msRoute: t1 - t0, msRaster: t2 - t1, reached }, [bitmap]);
+      post({ type: "result", id: m.id, bitmap, msRoute: t1 - t0, msRaster: t2 - t1, reached, bike: useBike }, [bitmap]);
     } else if (m.type === "explain" && graph && last) {
       const c = cellOf(m.lat, m.lon);
       const via = c < 0 ? VIA_NONE : last.r.via[c];

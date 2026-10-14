@@ -164,7 +164,7 @@ OSM  ─┴─> fietsrouting ─> fietstabellen per tegel ──>    bike/{z}/{x
 | **3. Realistisch fietsen** | Fietstabellen via OSRM, tegels opslaan, water en veerboten goed meenemen | Correcte randen bij water, nauwkeurig dichtbij |
 | **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". | Tweede modus |
 | **5. Grensregio** | België en een uitsnede van Duitsland samenvoegen in de GTFS (stop-ID's laten matchen bij grensstations) | Kaart tot ongeveer 50 km over de grens |
-| **6. Extra's** | Twee locaties vergelijken (bijv. "waar is het voor ons allebei < 45 min?"), deelbare URL, instellingen (fietssnelheid, overstapstraf, alleen trein), mobiele weergave | Afwerking |
+| **6. Gebruikers en bereik** | Bezoekers meten, deellink met instellingen, Open Graph, uitleg, mijn locatie, bottom sheet op mobiel, dag-animatie (uurmodel), twee vertrekpunten vergelijken. Later: overstapstraf, alleen trein. Zie "Fase 6 in detail". | Begrijpelijk en deelbaar voor bezoekers zonder voorkennis |
 
 ### Risico's
 
@@ -225,10 +225,302 @@ Scripts in `pipeline/`: `extract_day.py` → `stats.py` → `build_graph.py` →
 - Rond kleine wateren klopt het water-masker, maar de route kan er nog "overheen".
 - De JS-bundel is 290 kB gzip (vooral MapLibre). De data is ongeveer 4 MB ongecomprimeerd en wordt bij het laden in één keer opgehaald.
 - Er is geen dienstregelingsmodus en geen grensregio.
+- De wachttijd ½ × interval geldt alleen voor een perfect regelmatige dienst. Bij onregelmatige intervallen is de verwachte wachttijd (H/2)·(1 + σ²/H²), dus langer. Mogelijke uitbreiding: σ per corridor uitrekenen in de pipeline.
+- Rijtijden en intervallen komen uit 07–19 u op één werkdag. Voor de avond, de nacht en het weekend is de kaart dus te gunstig.
 
 ### Volgende concrete stap
 
 Fase 3, realistisch fietsen:
-- Een OSRM-fietsprofiel op een OSM-extract van NL.
-- Daarmee per halteplek de fietstijden naar de cellen binnen 5 km berekenen, opgeslagen in tegels.
-- Eerst meten hoeveel het hemelsbrede model in de praktijk afwijkt.
+- ~~Eerst meten hoeveel het hemelsbrede model in de praktijk afwijkt.~~ Klaar, zie stap 1 hieronder.
+- ~~Een OSRM-fietsprofiel op een OSM-extract van NL.~~ Klaar, zie stap 2.
+- ~~In één regio uitproberen hoe compact de fietstijden kunnen.~~ Eerste proef klaar (stap 3): een fietsraster met Dijkstra in de browser wint van tabellen per halte.
+- ~~Het fietsraster verbeteren en de rekentijd meten.~~ Klaar (stap 4): 16 richtingen, ±0,5 s voor heel NL.
+- ~~De grootte omlaag brengen en de uitschieters in Utrecht begrijpen.~~ Klaar (stap 5): start in 3 × 3 cellen, 4 bits, ±3–4 MB, fout > 5 min bij <1%.
+- ~~Het fietsraster voor heel NL bouwen.~~ Klaar (stap 6): `bike.bin.gz`, 2,25 MB.
+- ~~Het fietsraster inbouwen in de web-app.~~ Klaar (stap 7).
+- **Nu:** het grensextract (strook BE en DE) en fietspontjes controleren.
+- Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
+
+### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
+
+`pipeline/bike_check.py` vergelijkt het model met echte fietsroutes van de publieke OSRM-fietsserver van FOSSGIS (`routing.openstreetmap.de`).
+- **Steekproef:** 218 van de geplande 300 halteplekken. Per halte 40 bestemmingen binnen 5 km en 10 tussen 5 en 15 km, samen 10.900 paren.
+- **Server:** die gaf na ongeveer 200 haltes HTTP 429. Het script stopt dan met ophalen en analyseert de cache. `--offline` analyseert alleen de cache.
+- **Weggelaten:** 17% van de bestemmingen ligt meer dan 250 m van een fietsbare weg (water, weiland).
+
+| Afstand hemelsbreed | Paren | Omrijfactor p10 / p50 / p90 | Fout model p50 / p90 / p98 (min) |
+|---|---|---|---|
+| 0,3–1 km | 329 | 1,05 / 1,34 / 2,09 | +0,3 / +3,0 / +6,6 |
+| 1–2 km | 897 | 1,14 / 1,37 / 2,02 | +0,6 / +4,9 / +12,2 |
+| 2–3 km | 1.450 | 1,15 / 1,35 / 1,85 | +0,8 / +5,9 / +14,1 |
+| 3–5 km | 4.652 | 1,16 / 1,33 / 1,71 | +0,8 / +6,9 / +17,9 |
+| 5–10 km | 653 | 1,15 / 1,29 / 1,57 | 0,0 / +8,5 / +23,7 |
+| 10–15 km | 1.043 | 1,17 / 1,27 / 1,48 | −1,1 / +9,5 / +28,2 |
+
+Fout = fietstijd over de echte route min de modeltijd, beide bij 15 km/u. Positief betekent dat het model te gunstig is.
+
+**Conclusies:**
+- **De mediaan klopt.** Binnen 5 km is de mediane factor 1,34. De best passende vaste factor is 1,30, precies wat het model nu gebruikt.
+- **Stad of platteland maakt weinig uit.** De mediane factor is 1,33 in de stad en 1,36 op het platteland.
+- **OSRM rekent met 14,4 km/u** (mediaan), dicht bij de 15 km/u van het model.
+- **De fout zit in de staart.** Binnen 5 km wijkt het model bij 13,9% van de paren meer dan 5 min af en bij 4,7% meer dan 10 min, bijna altijd te gunstig.
+- **De ergste gevallen zijn water zonder brug:**
+  - Terschelling: +318 min;
+  - Elahuizen aan de Fluessen: +70 min;
+  - Wemeldinge aan het kanaal en de Oosterschelde: +59 min;
+  - Maasvlakte: +46 min;
+  - Hardinxveld aan de Merwede: +44 min.
+- **Gevolg voor fase 3.** Een andere vaste factor levert niets op. De winst zit alleen bij barrières. Dat rechtvaardigt echte fietstijden per halte via OSRM, maar het meeste gebied klopt nu al binnen 5 min.
+
+### Resultaten fase 3, stap 2: eigen OSRM-server (13 okt 2026)
+
+- **Omgeving.** WSL2 met Ubuntu 26.04 en `docker.io`. `osrm-backend` zit niet in apt. `C:\Users\corva\.wslconfig` geeft WSL 10 GB geheugen en 16 GB swap.
+- **Opzet.** `pipeline/osrm_setup.sh` (in Ubuntu) downloadt `netherlands-latest.osm.pbf` (1,4 GB) naar `~/osrm`. Daarna draait OSRM v5.27.1 met `bicycle.lua` en MLD, en start de container `osrm-fiets` op `localhost:5000`. Na een herstart is alleen `bash pipeline/osrm_setup.sh start` nodig.
+- **Verwerking.** Ongeveer 6 minuten, met een piek van 2,6 GB geheugen. De graaf heeft 10,0 miljoen knopen en 38,8 miljoen kanten.
+- **Controle.** `bike_check.py --local` op dezelfde 300 haltes en 15.000 paren duurde ongeveer een minuut.
+  - De routeafstand lokaal/publiek is in de mediaan 1,00 (p2–p98: 0,84–1,10).
+  - Mediane omrijfactor 1,34; de best passende factor is 1,32.
+  - Het model wijkt bij 12,9% meer dan 5 min af en bij 4,5% meer dan 10 min.
+  - De ergste omwegen zijn dezelfde routes als bij de publieke server.
+  - OSRM rekent lokaal met 13,7 km/u, publiek met 14,2 km/u. Dat maakt niet uit, want we rekenen met onze eigen snelheid.
+- **Grens.** Lokaal valt 29% van de bestemmingen af (meer dan 250 m van een weg), publiek 16%. Het verschil zit bij Belgische haltes uit de GTFS (Maasmechelen, Hasselt, Beerse) en bij bestemmingen over de grens, want het extract bevat alleen NL. Voor fase 3 is dus een extract met een strook BE en DE nodig.
+
+### Resultaten fase 3, stap 3: opslagvorm, eerste proef (13 okt 2026)
+
+`pipeline/bike_grid_test.py <regio>` vergelijkt twee opslagvormen met de eigen OSRM-server als waarheid. Per regio 56–60 haltes met de cellen binnen 5 km. Beide regio's samen hebben ±73.000 paren.
+- **A. Tabellen per halte.** Voor elke halte de fietstijd naar elke cel, of alleen de correcties.
+- **B. Fietsraster.** Per cel de wegafstand naar 4 buren (O, N, NO, NW; de andere 4 zijn dezelfde kanten terug), als uint8-omrijfactor. De browser doet dan Dijkstra over de cellen, met de haltes als bron.
+
+Zeeland (261 × 242 cellen, 50% met een weg binnen 250 m) en Utrecht (137 × 134 cellen, 77%). Fout = schatting − OSRM, in minuten bij 15 km/u.
+
+| | Zeeland p2 / p50 / p98 | Zeeland \|fout\| > 3 / > 5 min | Utrecht p2 / p50 / p98 | Utrecht \|fout\| > 3 / > 5 min |
+|---|---|---|---|---|
+| Model hemelsbreed × 1,3 | −15,5 / −0,8 / +2,2 | 20,8% / 11,1% | −11,5 / −0,7 / +2,1 | 20,9% / 10,9% |
+| B. fietsraster, ruw | −1,5 / +2,5 / +7,3 | – / 13,3% | −0,1 / +3,3 / +11,8 | – / 27,2% |
+| B. × vaste factor (0,844 / 0,804) | −4,9 / 0,0 / +3,5 | 6,9% / 2,4% | −4,0 / 0,0 / +6,3 | 12,2% / 4,4% |
+
+**Grootte voor heel NL:**
+- B kost ±2,5–3,8 MB (zlib), geschat vanuit de verhouding land/water in de regio.
+- A met alleen correcties boven 5 min kost ±6–8 MB, boven 3 min ±12–14 MB, boven 2 min ±19–22 MB.
+
+**Conclusies:**
+- **B wint.** B is kleiner, en het werkt ook voor het vertrekpunt (`directMaxKm`). A kan dat niet, want het vertrekpunt ligt overal. B vangt de barrières: het model is tot 15 min te gunstig, B maar enkele minuten.
+- **B is systematisch te lang.** Ruw is B 18–24% te lang. Dat komt door het zigzaggen tussen de gesnapte punten van naburige cellen: die liggen soms op verschillende straten. Ook de achtrichtingsmetriek telt mee, die gemiddeld ±5% te lang is.
+- **Eén vaste factor helpt, maar verschilt per gebied:** 0,84 in Zeeland en 0,80 in Utrecht. Een beter raster heeft de factor liefst niet nodig.
+
+### Resultaten fase 3, stap 4: 16 richtingen en rekentijd (13 okt 2026)
+
+`bike_grid_test.py <regio> <n> <variant>` met drie varianten:
+- `8`: zoals in stap 3;
+- `16`: daarbij de paardensprongen (2,1);
+- `16L`: daarbij ook lange rechte kanten (2,0), (0,2), (2,2) en (−2,2), samen 24 richtingen.
+
+Fout = raster − OSRM, zonder correctiefactor:
+
+| Variant | Zeeland p2 / p50 / p98 (min) | Zeeland > 5 min | Utrecht p2 / p50 / p98 (min) | Utrecht > 5 min | Raster/OSRM (mediaan) | NL zlib |
+|---|---|---|---|---|---|---|
+| Model × 1,3 | −15,5 / −0,8 / +2,2 | 11,1% | −11,5 / −0,7 / +2,1 | 10,9% | – | 0 |
+| 8 | −1,5 / +2,5 / +7,3 | 13,3% | −0,1 / +3,3 / +11,8 | 27,2% | 1,19–1,24 | 2,5–3,8 MB |
+| **16** | −2,4 / +1,3 / +4,4 | **2,3%** | −1,0 / +1,8 / +9,6 | **8,6%** | 1,10–1,14 | 5,1–7,7 MB |
+| 16L | −2,5 / +1,0 / +3,8 | 1,8% | −1,4 / +1,4 / +8,9 | 6,0% | 1,08–1,10 | 7,6–11,5 MB |
+
+**Rekentijd** (`pipeline/grid_bench.mjs`, Node/V8, synthetisch raster van heel NL met 59% land, 16 richtingen):
+- Met een binaire heap: 1,5–2,0 s als vrijwel heel NL bereikt wordt (±0,8 mln cellen).
+- Met een bucketwachtrij (Dial, 10 s) en de kanten per cel naast elkaar: **±0,5 s** voor 0,9–1,0 mln cellen, ±0,15 s voor ±0,35 mln cellen.
+- 1 byte per kant in plaats van 2 gaf geen winst.
+- Fietsen vanaf het vertrekpunt (15 km) kost ±5 ms.
+
+**Conclusies:**
+- **16 richtingen is de beste keuze.** Zonder correctiefactor wijkt het raster in Zeeland bij 2,3% meer dan 5 min af, tegen 11,1% voor het model. 16L wint daar weinig op, voor 50% meer data.
+- **Utrecht blijft lastiger.** Het raster wijkt daar bij 8,6% meer dan 5 min af (p98 +9,6 min). Het raster is dan te lang, waarschijnlijk door cellen die op een weg aan de andere kant van een barrière snappen, zoals een spoor of gracht. Dit is nog niet onderzocht.
+- **De grootte valt tegen.** Met 16 richtingen is het ±5–8 MB zlib voor heel NL. De doelstelling is een paar MB. Mogelijke winst: 4 bits per kant, kanten weglaten die even lang zijn als de route via twee kortere kanten, of tegels per regio die pas laden als ze nodig zijn.
+- **De rekentijd is ±0,5 s voor heel NL**, tegen 90–270 ms nu. Dat is acceptabel voor een klik, maar niet tijdens slepen. Een mogelijke oplossing: tijdens het slepen de snelle kegels tonen, en na het loslaten het fietsraster.
+
+### Resultaten fase 3, stap 5: startcellen, 4 bits en snoeien (13 okt 2026)
+
+`bike_grid_test.py <regio> 60 16 <R> [--prune] [--4bit]` slaat nu per paar halte, cel en fouten op in `data/bike_grid/`, voor nader onderzoek.
+
+**Uitschieters in Utrecht.** Die zaten bij een paar haltes: bij Houten Meidoornkade en De Biltsche Hoek was 98% van de paren meer dan 5 min fout. Het raster startte alleen in de cel van de halte. Ligt het gesnapte midden van die cel achter een spoor of water, dan begint elke route met een omweg. De oplossing: de halte start in de 3 × 3 cellen eromheen (R = 1), elk met de echte fietsafstand halte → celknoop uit OSRM. Dat kost 9 bytes per halteplek, ±0,3 MB voor NL.
+
+**Fout in de 8-bitsversie.** Omrijfactoren boven 8,94 werden afgekapt in plaats van weggelaten. Een kant zonder brug werd zo een te korte sluiproute; daar kwam de p2 van −3 min vandaan. De 4-bitsversie laat te grote factoren weg.
+
+**4 bits per kant.** 15 niveaus van de omrijfactor (1,00 / 1,04 / 1,08 / 1,13 / 1,19 / 1,26 / 1,35 / 1,46 / 1,6 / 1,8 / 2,05 / 2,4 / 2,9 / 3,6 / 4,5) plus "geen kant". Factoren boven ±5 worden geen kant, nooit afgerond naar beneden.
+
+**Snoeien.** Een kant valt weg als een pad over twee andere kanten even kort of korter is. Kortste paden blijven exact gelijk. Dat haalt 17–19% van de kanten weg, maar scheelt in grootte maar ±7%.
+
+Variant 16, fout = raster − OSRM, zonder correctiefactor:
+
+| | Zeeland p2 / p50 / p98 (min) | Zeeland > 5 min | Utrecht p2 / p50 / p98 (min) | Utrecht > 5 min | NL zlib |
+|---|---|---|---|---|---|
+| Model × 1,3 | −15,5 / −0,8 / +2,2 | 11,1% | −11,5 / −0,7 / +2,1 | 10,9% | 0 |
+| 8 bits, start 1 cel | −2,4 / +1,3 / +4,4 | 2,3% | −1,0 / +1,8 / +9,6 | 8,6% | 5,1–7,7 MB |
+| 8 bits, start 3 × 3 | −3,1 / +0,5 / +3,3 | 1,9% | −1,9 / +1,0 / +4,0 | 1,1% | 5,1–7,7 MB |
+| **4 bits, start 3 × 3, gesnoeid** | **−1,1 / +0,5 / +3,5** | **0,7%** | **−1,0 / +1,0 / +4,1** | **0,8%** | **2,8–4,3 MB** |
+
+Het raster is nu in de mediaan 4–7% te lang, zonder correctiefactor. De NL-grootte is geschat vanuit de regio's; de echte waarde volgt pas uit een raster voor heel NL.
+
+### Resultaten fase 3, stap 6: fietsraster voor heel NL (14 okt 2026)
+
+- **`pipeline/build_bike_grid.py`** bouwt het raster met de eigen OSRM-server. Het is te onderbreken: elke rij blokken komt in een eigen bestand in `data/bike_grid/nl/` en wordt bij een nieuwe start overgeslagen. Het resultaat is `data/bike_grid/nl_raw.npz`, met de ruwe afstanden in meters.
+  - Het raster is 1147 × 1380 cellen, gelijk aan `grid.ts`, in 173 rijen van 144 blokken. Netto ±80 min rekenwerk, ±30 s per rij door het midden van het land.
+  - Vannacht stopte de run halverwege, waarschijnlijk door de slaapstand. OSRM bleef daarna doorrekenen aan de afgebroken verzoeken (840% CPU). Een herstart van de container (`docker restart osrm-fiets`) en een nieuwe start van het script loste dat op. De container staat nu op `--restart unless-stopped`.
+  - 499.066 cellen (31,5%) hebben een fietsbare weg binnen 250 m. Er zijn 12,6 mln kanten.
+  - Daarbij komen de startcellen: voor 34.264 halteplekken de afstand naar de knopen van de 3 × 3 cellen eromheen, in 261 s.
+- **`pipeline/export_bike_grid.py`** schrijft `web/public/data/bike.bin.gz`. Het formaat staat in het script.
+  - **2,25 MB gzip** (7,4 MB ruw: kanten 6,3, snap 0,8, startcellen 0,31 MB).
+  - Snoeien haalt 20% van de kanten weg: van 3,33 naar 2,67 mln.
+- **Halteplekken zonder startcel:** 6.286, allemaal in België (Antwerpen, Hasselt, Zonhoven en andere), 0,3–30 km buiten het NL-extract. Dat lost het grensextract op.
+
+### Resultaten fase 3, stap 7: fietsraster in de web-app (14 okt 2026)
+
+- **`web/src/bikegrid.ts`:**
+  - **Laden.** Laadt `bike.bin.gz` en pakt het zelf uit met `DecompressionStream` als de server geen `Content-Encoding` zet.
+  - **Opbouw bij het laden.** De kanten komen in CSR-vorm, beide richtingen, met de lengte in echte meters (`Uint16`). De startcellen per halteplek worden omgezet naar knopen. Het laden kost ±0,4–0,7 s, na de graaf. Tot dan rekent de kaart met kegels.
+  - **Stap 1, vanaf het vertrekpunt.** Dijkstra met een bucketwachtrij (10 s) over het raster, met de fietsgrens vanaf het vertrekpunt. Het vertrekpunt start in de 5 × 5 cellen eromheen, hemelsbreed × 1,3 naar het celmidden. Daaruit volgen de begintijden van de haltes, via hun startcellen. De OV-zoektocht (`search`) krijgt die begintijden nu van buiten.
+  - **Stap 2, vanaf de haltes.** Dijkstra vanaf alle bereikte haltes tegelijk, met de fietsgrens vanaf de halte. Elke cel krijgt de snelste van beide tijden, plus de snapafstand.
+  - **Terugval.** Haltes zonder startcellen (België) tekenen nog een hemelsbrede kegel. Dat geldt ook voor het vertrekpunt buiten het raster.
+  - **Aanvullen.** Cellen zonder weg binnen 250 m krijgen via een afstandstransformatie in twee passes de tijd van de dichtstbijzijnde bereikte cel, tot 750 m. Knopen worden nooit aangevuld, anders ontstaan alsnog sluiproutes over water.
+- **UI:**
+  - een schakelaar "Fietsen: over de weg (OpenStreetMap)", standaard aan;
+  - de voetregel toont welk model actief is.
+- **Rekentijd vanaf Utrecht C**, 3 uur, met wachttijd, in Node: netwerk 70 ms, kaart 387 ms, gelijk aan de kegels (55 / 387 ms).
+  - De eerste versie was 740 ms. De winst kwam van de CSR-kanten, de vooraf omgezette startcellen en een aanvulstap zonder closures.
+  - In headless Chrome (software-rendering, trager) is het raster 340–450 ms, de kegels 260–450 ms.
+- **Reistijden** (raster / kegels, min): Amsterdam C 38 / 34, Rotterdam C 44 / 42, Groningen 129 / 124, Houten 22 / 20. Het raster is wat langer, door echte routes en de ±5% systematische fout uit stap 5.
+- **Gecontroleerd in Chrome:**
+  - de heatmap verschijnt;
+  - de tooltip toont de route;
+  - zoeken naar "Ruinen" werkt;
+  - de schakelaar wisselt het model;
+  - er zijn geen consolefouten (alleen het ontbrekende favicon, dat al zo was).
+- **Visueel bij Goes:** de kegels lopen over de Oosterschelde en de Westerschelde door; het raster volgt het wegennet.
+
+**Bekende beperkingen:**
+- **Over de grens.** Cellen over de grens zijn alleen gekleurd vanuit Belgische haltes (kegels). Vanaf Nederlandse haltes stopt het fietsen aan de grens, tot het grensextract er is.
+- **Fietsgrens.** De fietsgrens geldt per label: de eerste halte die een cel bereikt, bepaalt de gefietste afstand. Dat is een benadering.
+- **Veerponten.** Kleine veerponten zonder GTFS-dienst ontbreken waarschijnlijk in het fietsraster. Dat is nog niet gecontroleerd.
+
+**Volgende stap:**
+1. ~~Het fietsraster voor heel NL bouwen en de echte grootte meten.~~ Klaar (stap 6): 2,25 MB gzip.
+2. ~~Het inbouwen in de web-app.~~ Klaar (stap 7).
+3. **Nu:** het grensextract met een strook BE en DE, en controleren of fietspontjes meedoen.
+
+Het plan was om tijdens het slepen de kegels te tonen en na het loslaten het fietsraster. Dat is niet nodig: het raster is even snel als de kegels.
+
+## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
+
+Fase 6 maakt de site begrijpelijk en deelbaar voor bezoekers die niets van GTFS of Dijkstra weten. Het rekenmodel blijft zoals het is.
+
+**Uitgangspunten:**
+- Geen eigen backend. Alles blijft statisch op GitHub Pages.
+- Geen cookies en geen persoonsgegevens, dus geen cookiebanner.
+- De eerste kaart staat op 4G binnen enkele seconden.
+- Bestaande deellinks (`#lat,lon,naam`) blijven werken.
+- Het touchpatroon (tikken → infobox → "Vertrek vanaf hier") blijft.
+
+### 6.1 Snelle winst (ongeveer twee avonden)
+
+- **Instellingen in de deellink.** Optionele sleutels na het vertrekpunt, bijvoorbeeld `#52.08940,5.11000,Utrecht%20Centraal&w=0.5&v=15&b=5&d=15&t=180`. De sleutels zijn `w` (wachtfactor), `v` (fietssnelheid), `b` (bikeMaxKm), `d` (directMaxKm) en `t` (tMaxMin).
+  - Alleen afwijkingen van de standaard komen in de URL.
+  - `readHash()` leest eerst het oude deel en daarna de sleutels. Onbekende of ongeldige waarden worden genegeerd.
+  - Elke schuif werkt de hash bij via `history.replaceState`.
+  - Let op: de huidige regex in `main.ts` neemt alles na de tweede komma als naam. De naam moet dus ophouden bij de eerste `&`.
+- **Deelknop.** Op mobiel `navigator.share()`, op desktop kopiëren met de melding "Link gekopieerd".
+- **Open Graph en favicon.** Voeg `og:title`, `og:description`, `og:image` (`og.png`, 1200 × 630, heatmap vanaf Utrecht C) en `twitter:card` toe, plus een SVG-favicon met kleurbanden. De preview is voor elke link hetzelfde, want crawlers lezen de hash niet.
+- **Uitleg.**
+  - Eén zin onder de titel.
+  - Een blok "Hoe werkt dit?" met de kleuren, de wachttijd en de beperkingen.
+  - Gewone woorden voor de modellen: "Optimistisch (geen wachttijd)" en "Realistisch (met gemiddelde wachttijd)".
+- **Mijn locatie.** Een knop die `navigator.geolocation` (of MapLibre `GeolocateControl`) gebruikt en dan `setOrigin()` aanroept. Bij weigeren of een positie buiten NL verschijnt een melding.
+- **Voorbeeldchips** onder de zoekbalk: Amsterdam C, Groningen, Middelburg, Terschelling, Winterswijk. Elke chip is een gewone deellink.
+
+### 6.2 Bezoekers meten
+
+GoatCounter: gratis voor niet-commerciële sites en zonder cookies. Alternatief is Cloudflare Web Analytics, met minder mogelijkheden voor eigen gebeurtenissen.
+1. Maak een account met de code `ovafstand`.
+2. Zet in `index.html`: `<script data-goatcounter="https://ovafstand.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>`.
+3. Tel eigen gebeurtenissen met `window.goatcounter?.count({ path, event: true })`:
+   - `vertrekpunt-gekozen` (klik, zoeken, locatie of chip);
+   - `gedeeld`;
+   - later `animatie-gestart` en `vergelijken-gestart`.
+4. Zet het tellen uit op `localhost`.
+
+Stuur alleen het type gebeurtenis mee, nooit coördinaten of adressen.
+
+### 6.3 Smartphone
+
+- **Bottom sheet.** Tot 640 px wordt het paneel een sheet onderaan:
+  - ingeklapt (±72 px): het vertrekpunt en de legenda;
+  - half (±45%): de zoekbalk, de chips en de deelknop;
+  - vol (±85%): de instellingen en de uitleg.
+
+  Vegen of tikken op de greep wisselt de stand. Focus op de zoekbalk zet de sheet op vol. Na het kiezen van een vertrekpunt klapt hij in.
+- **Infobox in de sheet.** De popup valt aan de rand soms buiten beeld. Op mobiel staat de reisinfo daarom in de sheet (half), met een grote knop "Vertrek vanaf hier". Op de kaart blijft alleen een markering.
+- **Kleine punten:**
+  - tikdoelen van minstens 44 × 44 px;
+  - geen zoomknoppen op touch;
+  - `env(safe-area-inset-*)` met `viewport-fit=cover`;
+  - de legenda altijd zichtbaar;
+  - de statusregel op mobiel verbergen.
+- **Testen** op een iPhone (Safari) en een Android-toestel (Chrome), staand en liggend. `OffscreenCanvas` werkt pas vanaf iOS 16.4. Oudere toestellen moeten een duidelijke melding krijgen.
+
+### 6.4 Animatie: een werkdag doorlopen
+
+Begin met een uurmodel: per uur een statische graaf. Nog geen volledige dienstregelingsrouter. Het huidige model volstaat niet, om twee redenen:
+- het venster 07–19 u is 's avonds te gunstig;
+- de wachttijdgrens van 30 min maakt een nachtbus die eens per twee uur rijdt te aantrekkelijk.
+
+- **Pipeline.** `build_graph.py` berekent per instapkant en per uur (24 vakken, of 48 halve uren) het interval en de kortste rijtijd. Zonder dienst is de waarde 65535. Het resultaat is een apart bestand `hours.bin` (±82.500 × 24 × 2 B ≈ 4 MB). Dat wordt pas geladen bij het starten van de animatie.
+- **Wachttijd.** ½ interval zonder grens van 30 min. Een kant zonder dienst is dicht.
+- **Over het uur heen.** De kosten van een instapkant hangen af van `vertrektijd + label`, niet van het vertrekuur. Dat is een kleine aanpassing in `router.ts`.
+- **Afspelen:**
+  - een tijdschuif van 00:00 tot 24:00 met een afspeelknop en een grote klok;
+  - de worker rekent twee frames vooruit (±300 ms per frame);
+  - een overgang van ±400 ms via twee `ImageSource`-lagen;
+  - frames niet bewaren: 48 stuks kosten honderden MB;
+  - onder de schuif een lijndiagram met het oppervlak dat per uur binnen 1 uur bereikbaar is.
+- **Later.** Fase 4 (CSA) kan dezelfde schuif gebruiken. Neem dan per frame de mediaan over 12 vertrekmomenten, zodat het beeld niet springt.
+- **Open punten:**
+  - alleen werkdag, of ook zaterdag en zondag?
+  - een demo vanaf Utrecht op de voorpagina?
+  - een video exporteren met `MediaRecorder`?
+
+### 6.5 Twee vertrekpunten vergelijken
+
+Technisch is het steeds hetzelfde: twee Dijkstra-runs, twee rasters met minuten per cel en een rekensom per cel. Welke som je kiest, hangt af van de vraag van de bezoeker.
+
+| Vraag | Per cel | Kleur | Voorbeeld |
+|---|---|---|---|
+| Waar zijn we allebei snel? | max(A, B) | huidige schaal | samen wonen, elk een eigen werk |
+| Waar is de totale reistijd het laagst? | A + B | huidige schaal × 2 | twee forenzen |
+| Wie is er dichterbij? | A − B | tweekleurig rond 0 | twee huizen of banen vergelijken |
+| Waar spreken we af? | max(A, B), beste 5% | markering | afspreken in een andere stad |
+
+**Voorstel:**
+- Een knop "+ Vergelijk met…" voor punt B.
+- Een schakelaar met twee standen: "Allebei snel" (max) en "Wie is dichterbij" (verschil).
+- De tooltip toont beide routes, A en B elk in een eigen kleur.
+- Deellink met `&m=max` of `&m=diff`. Gebruik voor punt B een eigen sleutel, bijvoorbeeld `&p2=52.51,6.09,Zwolle`. Het oorspronkelijke plan (daar "fase 5" genoemd) stelde `&b=` voor, maar die sleutel is al bikeMaxKm.
+
+**Techniek:**
+- `raster.ts` moet de minuten per cel bewaren als `Uint16Array` (±3 MB per raster). Pas daarna volgt de kleuring.
+- A wordt gecachet, zodat slepen met B alleen B opnieuw rekent.
+- De rekentijd is ±300 ms als één punt verandert en ±600 ms als beide veranderen.
+
+**Open vragen:**
+- Welke vraag komt eerst?
+- Ook drie of meer punten? Dan werkt max nog, het verschil niet.
+- Combineren met de animatie? Pas na 6.4.
+
+### 6.6 Volgorde
+
+Eerst meten en delen, dan de grote features.
+1. Bezoekers meten (6.2): een half uur, als nulmeting.
+2. Snelle winst (6.1).
+3. Smartphone (6.3).
+4. Animatie (6.4): eerst het uurmodel, dan de tijdschuif.
+5. Vergelijken (6.5).
+
+Stap 4 en 5 kunnen in beide volgordes.
+
+**Open vraag:** een eigen domeinnaam? Dat kan met GitHub Pages.
