@@ -38,10 +38,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #e8eef2; }
 h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 .sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .body { padding: 4px 16px 14px; }
-.icon-btn {
-  border: 0; background: none; font-size: 18px; color: var(--muted); cursor: pointer; padding: 2px 4px;
-  display: none;
-}
+.grip { display: none; }
+#info[hidden] { display: none; }
 
 .search { position: relative; margin-top: 6px; }
 #q {
@@ -166,15 +164,77 @@ ol.legs li.t4 { border-color: #00a3c4; }   /* veer */
   background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
 }
 
-/* ---------- smal scherm: paneel onderin, inklapbaar ---------- */
+/* plek die op de kaart getikt is (smal scherm; de reisinfo staat dan in de sheet) */
+.tap-marker {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 3px solid var(--accent); background: rgba(27, 77, 216, 0.15);
+}
+
+/* touch: zoomen gaat met twee vingers, de knoppen zitten dan alleen in de weg */
+@media (pointer: coarse) {
+  .maplibregl-ctrl-top-right { display: none; }
+}
+
+/* ---------- smal scherm: paneel als sheet onderaan, drie standen (data-sheet) ---------- */
 @media (max-width: 640px) {
   #panel {
     top: auto; bottom: 0; left: 0; right: 0; width: auto;
-    max-height: 60%;
-    border-radius: var(--radius) var(--radius) 0 0;
+    max-height: 85%;
+    max-height: 85dvh;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    overscroll-behavior: contain;
   }
-  #panel.collapsed .body > :not(.search):not(.legend-wrap) { display: none; }
-  .icon-btn { display: block; }
-  #panel.collapsed .icon-btn { transform: rotate(180deg); }
-  .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { margin-bottom: 150px; }
+  #panel[data-sheet="half"] { max-height: 45%; max-height: 45dvh; }
+  .grip {
+    display: block; position: sticky; top: 0; z-index: 1;
+    width: 100%; height: 28px; border: 0; padding: 0;
+    background: var(--bg); cursor: grab; touch-action: none;
+  }
+  .grip::before {
+    content: ""; display: block; width: 40px; height: 5px; margin: 10px auto 0;
+    border-radius: 3px; background: #c5ccd6;
+  }
+  #panel header { padding-top: 0; }
+  h1 { font-size: 17px; }
+
+  /* ingeklapt: alleen het vertrekpunt en de legenda */
+  #panel[data-sheet="collapsed"] header,
+  #panel[data-sheet="collapsed"] .body > :not(.origin-row):not(.legend-wrap) { display: none; }
+  #panel[data-sheet="collapsed"] .origin-row { margin-top: 0; }
+  #panel[data-sheet="collapsed"] .legend-wrap { margin: 8px 0 0; }
+  /* de legenda blijft onderaan in beeld, ook als de sheet scrolt */
+  .legend-wrap {
+    position: sticky; bottom: 0; z-index: 1;
+    margin: 10px -16px 0; padding: 8px 16px 6px;
+    background: var(--bg);
+  }
+  /* half: zoeken, voorbeelden, vertrekpunt en delen; instellingen en uitleg pas bij vol */
+  #panel[data-sheet="half"] .body > :is(details, .hint, footer) { display: none; }
+  /* met reisinfo in beeld is de titel overbodig */
+  #info:not([hidden]) + header { display: none; }
+  #info { padding: 0 16px 12px; border-bottom: 1px solid var(--line); margin-bottom: 10px; font-size: 14px; }
+  #info .close {
+    float: right; width: 44px; height: 44px; margin: -8px -12px 0 0;
+    border: 0; background: none; font-size: 22px; color: var(--muted); cursor: pointer;
+  }
+  #info .btn { min-height: 48px; font-size: 15px; }
+
+  .status { display: none; }
+
+  /* tikdoelen van minstens 44 px; 16 px tekst in het zoekveld, anders zoomt iOS in */
+  #q { min-height: 44px; font-size: 16px; }
+  #results li { padding: 12px; }
+  .chip { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; }
+  .small-btn { min-height: 44px; font-size: 14px; }
+  summary { padding: 12px 0; margin-bottom: 0; }
+  details[open] summary { margin-bottom: 4px; }
+  fieldset label { padding: 10px 0; }
+  label.range input { min-height: 32px; }
+  label.select select { min-height: 44px; }
+
+  /* kaartbediening en meldingen boven de sheet (--sheet-h zet main.ts) */
+  .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { margin-bottom: calc(var(--sheet-h, 0px) + 4px); }
+  #toast { bottom: calc(var(--sheet-h, 0px) + 12px); }
 }
+.maplibregl-ctrl-top-right { margin-top: env(safe-area-inset-top); margin-right: env(safe-area-inset-right); }

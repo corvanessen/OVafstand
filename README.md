@@ -156,3 +156,7 @@ Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.1
 Een waarde die het invoerveld niet kan tonen, wordt genegeerd. Oude links met alleen `#lat,lon,naam` werken nog.
 
 `og.png` (het deelvoorbeeld, 1200 × 630) is een screenshot van de site vanaf Utrecht C. Na een grote wijziging van de kaart maak je hem opnieuw.
+
+### Bezoekers
+
+GoatCounter (https://ovafstand.goatcounter.com) telt bezoeken en een paar gebeurtenissen, zoals `vertrekpunt-zoeken` en `gedeeld-kopie`. Er zijn geen cookies, en de hash met het vertrekpunt gaat niet mee. Op localhost telt het niet. Je eigen bezoeken zet je uit door één keer `#toggle-goatcounter` achter de URL te openen.

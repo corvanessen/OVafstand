@@ -2,7 +2,7 @@
 <html lang="nl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>OV-afstand</title>
     <meta name="description" content="Hoe lang ben je met OV en fiets onderweg naar elke plek in Nederland?" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -18,18 +18,23 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Kaart van Nederland, gekleurd naar reistijd vanaf Utrecht Centraal" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- bezoekers tellen zonder cookies (ovafstand.goatcounter.com); niet op localhost, de hash gaat niet mee -->
+    <script data-goatcounter="https://ovafstand.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
   </head>
   <body>
     <div id="app" class="loading">
       <div id="map"></div>
 
       <aside id="panel">
+        <!-- alleen op een smal scherm: greep van de sheet (tikken of vegen) -->
+        <button id="grip" class="grip" aria-label="Paneel groter of kleiner maken"></button>
+        <!-- alleen op een smal scherm: reisinfo na tikken op de kaart -->
+        <section id="info" hidden></section>
         <header>
           <div>
             <h1>OV-afstand</h1>
             <p class="sub">Hoe lang ben je met trein, bus en fiets onderweg naar elke plek in Nederland?</p>
           </div>
-          <button id="panelToggle" class="icon-btn" aria-label="Paneel in- of uitklappen">▾</button>
         </header>
 
         <div class="body">
@@ -50,7 +55,7 @@
             <button id="locate" class="small-btn" title="Vertrek vanaf je huidige locatie">⌖ Mijn locatie</button>
             <button id="share" class="small-btn" title="Deel een link naar deze kaart, met je instellingen">↗ Delen</button>
           </div>
-          <p class="hint">Klik op de kaart of sleep de punt om het vertrekpunt te verplaatsen.</p>
+          <p class="hint" id="hint">Klik op de kaart of sleep de punt om het vertrekpunt te verplaatsen.</p>
 
           <div class="legend-wrap">
             <div id="legend"></div>
@@ -91,14 +96,15 @@
           <details id="about">
             <summary>Hoe werkt dit?</summary>
             <p>Elke kleur is een kwartier reistijd, van groen (dichtbij) naar paars. Zonder kleur: niet bereikbaar binnen de kleurschaal.
-              Beweeg over de kaart voor de reistijd en de route; klik om daar te vertrekken.</p>
+              Beweeg over de kaart (of tik erop) voor de reistijd en de route.</p>
             <p>Een reis is: fietsen naar een halte, met trein, bus, tram, metro of veerboot verder, en het laatste stuk weer fietsen.
               Of de hele reis fietsen, als dat sneller is. Het fietsen gaat over echte wegen en fietspaden uit OpenStreetMap.</p>
             <p><b>Realistisch</b> telt bij elke instap de helft van de tijd tussen twee vertrekken als wachttijd (hooguit 30 min).
               <b>Optimistisch</b> doet alsof je overstap altijd klaarstaat.</p>
             <p><b>Beperkingen.</b> De kaart rekent met een gewone werkdag overdag (07–19 u); 's avonds en in het weekend duurt het vaak langer.
               Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
-            <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.</p>
+            <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.
+              Bezoeken worden geteld met GoatCounter, zonder cookies en zonder je locatie.</p>
           </details>
 
           <p id="status" class="status">Netwerk laden…</p>

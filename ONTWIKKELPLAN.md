@@ -240,7 +240,9 @@ Fase 3, realistisch fietsen:
 - ~~Het fietsraster inbouwen in de web-app.~~ Klaar (stap 7).
 - ~~Het grensextract (strook BE en DE) en fietspontjes controleren.~~ Klaar (stap 8). Daarmee is fase 3 af.
 - ~~Fase 6.1, snelle winst.~~ Klaar, zie "Resultaten fase 6.1".
-- **Nu:** bezoekers meten (6.2), daarna de smartphone (6.3). Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
+- ~~Bezoekers meten (6.2).~~ Klaar, zie "Resultaten fase 6.2".
+- ~~De smartphone (6.3).~~ Klaar in de emulatie, zie "Resultaten fase 6.3". Testen op een echt toestel moet de gebruiker nog doen.
+- **Nu:** de animatie van een werkdag (6.4), te beginnen met het uurmodel in de pijplijn. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -583,6 +585,50 @@ Begonnen met 6.1 in plaats van 6.2 (keuze van de gebruiker). Op branch `fase6`.
   - het favicon.
 
   Alles OK, zonder consolefouten. Ook gecontroleerd: `tsc`, `npm run build` en een screenshot op 390 px breed. Op een echt toestel is het nog niet getest: `navigator.share` en de locatie.
+
+### Resultaten fase 6.2: bezoekers meten (14 okt 2026)
+
+- **Account.** `ovafstand.goatcounter.com` (aangemaakt door de gebruiker). Het script staat in `index.html`, met `async`.
+- **Wat er niet meegaat.** `count.js` stuurt alleen `pathname + search` mee, nooit de hash met het vertrekpunt. Op `localhost` en in privé-netwerken telt het niet (`allow_local` staat standaard uit). Gecontroleerd in de broncode van `count.js` en in Chrome: "not counting because of: localhost".
+- **Eigen bezoeken uitzetten.** Open één keer `…/OVafstand/#toggle-goatcounter` in je eigen browser.
+- **Gebeurtenissen** (`track()` in `main.ts`): elk is een eigen pad, zodat het dashboard ze apart telt. Het zijn alleen namen, zonder coördinaten of adressen.
+  - `vertrekpunt-klik`, `-tik`, `-slepen`, `-zoeken`, `-voorbeeld` en `-locatie`. Het plan noemde één gebeurtenis `vertrekpunt-gekozen`, maar per bron leert meer.
+  - `gedeeld-menu` (`navigator.share`) en `gedeeld-kopie` (klembord).
+  - `uitleg-geopend` en `instellingen-geopend`.
+  - Later: `animatie-gestart` en `vergelijken-gestart`.
+- **In "Hoe werkt dit?"** staat: "Bezoeken worden geteld met GoatCounter, zonder cookies en zonder je locatie."
+- **Getest in headless Chrome.** Met een recorder in plaats van `goatcounter.count` komen chip, uitleg, instellingen, delen, locatie en klik in de juiste volgorde binnen, zonder cijfers.
+- **Nulmeting.** Er wordt pas geteld na een merge naar `main`, omdat Pages vanaf `main` publiceert.
+
+### Resultaten fase 6.3: smartphone (14 okt 2026)
+
+Op branch `fase6-smartphone`. Alles geldt onder 640 px breed; daarboven blijft het paneel zoals het was.
+- **Bottom sheet** met `data-sheet` op `#panel`:
+  - **ingeklapt:** het vertrekpunt en de legenda, ±117 px;
+  - **half:** tot 45dvh; zoeken, chips, mijn locatie en delen;
+  - **vol:** tot 85dvh; ook de hint, de instellingen, de uitleg en de voetregel.
+- **Wisselen tussen de standen.**
+  - Een greep bovenaan: tikken klapt open of dicht, vegen gaat een stand omhoog of omlaag.
+  - De greep vangt `touchend` af. Anders kwam de nagestuurde klik na het inklappen op de kaart terecht, opende die de reisinfo en ging de sheet weer half open. Dat bleek in de test.
+  - Focus op het zoekveld zet de sheet op vol.
+  - Na een keuze (zoeken, chip, locatie of "Vertrek vanaf hier") klapt hij in.
+  - Een eerste bezoek zonder hash begint half open; een gedeelde link ingeklapt.
+- **Reisinfo in de sheet.** Tikken op de kaart toont de route boven in de sheet (half), met een sluitknop en een grote knop "Vertrek vanaf hier". Op de kaart staat dan alleen een blauwe ring. Op een breder touchscherm (tablet) blijft het de popup.
+- **De legenda** blijft sticky onderaan de sheet in beeld, ook als die scrolt.
+- **Kleine punten:**
+  - Tikdoelen zijn ≥ 44 px: chips, knoppen, zoekveld, menukoppen en radioknoppen.
+  - Het zoekveld heeft 16 px tekst, anders zoomt iOS in bij focus.
+  - Geen zoomknoppen bij `pointer: coarse`.
+  - `viewport-fit=cover` met `env(safe-area-inset-*)`.
+  - De statusregel is verborgen.
+  - De hint zegt "Tik op de kaart…".
+  - De bronvermelding begint ingeklapt; MapLibre klapt die eerst uit, en dan bedekt hij een flink stuk kaart.
+  - `--sheet-h` (via een `ResizeObserver`) houdt de kaartbediening en de meldingen boven de sheet.
+  - Kaartpadding onderaan (30% van de hoogte), zodat het vertrekpunt boven de halfopen sheet valt.
+- **Oude browsers.** Zonder `OffscreenCanvas` of `DecompressionStream` (iOS < 16.4) start de worker niet. Er verschijnt dan "Je browser is te oud voor deze kaart. Op een iPhone of iPad is iOS 16.4 of nieuwer nodig."
+- **Getest in headless Chrome** als telefoon (390 × 844, touch-emulatie, tikken en vegen via `Input.dispatchTouchEvent`). Alle 22 controles zijn OK, zonder consolefouten, en ook de desktoptests van 6.1 zijn nog OK.
+  - Gecontroleerd: de standen, de chip, de tik op de kaart, "Vertrek vanaf hier", vegen omhoog en omlaag, tikken op de greep, de focus op het zoekveld, de tikdoelen, de positie van de kaartbediening en de melding voor oude browsers.
+  - **Nog niet gedaan:** een echte iPhone (Safari) en een Android-toestel, staand en liggend.
 
 ### 6.6 Volgorde
 
