@@ -138,4 +138,21 @@ npm --prefix web install
 npm --prefix web run dev
 ```
 
-`npm --prefix web run build` levert een statische site op in `web/dist/`, met de data erin. Die kun je zo op GitHub Pages, Cloudflare Pages of een andere statische host zetten.
+`npm --prefix web run build` levert een statische site op in `web/dist/`, met de data erin. Die kun je zo op GitHub Pages, Cloudflare Pages of een andere statische host zetten. De workflow in `.github/workflows/pages.yml` publiceert `main` op https://corvanessen.github.io/OVafstand/.
+
+### Deellink
+
+Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.11000,Utrecht%20Centraal&w=0&t=120`. Alleen afwijkingen van de standaard komen erin:
+
+| Sleutel | Instelling | Standaard |
+|---|---|---|
+| `w` | wachtfactor: 0,5 = realistisch, 0 = optimistisch | 0.5 |
+| `v` | fietssnelheid (km/u) | 15 |
+| `b` | fietsen van halte naar bestemming, max (km) | 5 |
+| `d` | fietsen vanaf vertrekpunt, max (km) | 15 |
+| `t` | kleurschaal tot (min) | 180 |
+| `f` | fietsen over de weg (1) of hemelsbreed × 1,3 (0) | 1 |
+
+Een waarde die het invoerveld niet kan tonen, wordt genegeerd. Oude links met alleen `#lat,lon,naam` werken nog.
+
+`og.png` (het deelvoorbeeld, 1200 × 630) is een screenshot van de site vanaf Utrecht C. Na een grote wijziging van de kaart maak je hem opnieuw.

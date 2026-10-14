@@ -239,7 +239,8 @@ Fase 3, realistisch fietsen:
 - ~~Het fietsraster voor heel NL bouwen.~~ Klaar (stap 6): `bike.bin.gz`, 2,25 MB.
 - ~~Het fietsraster inbouwen in de web-app.~~ Klaar (stap 7).
 - ~~Het grensextract (strook BE en DE) en fietspontjes controleren.~~ Klaar (stap 8). Daarmee is fase 3 af.
-- **Nu:** fase 6 in de volgorde van 6.6: eerst bezoekers meten (6.2), dan de snelle winst (6.1). Fase 5 (GTFS van BE en DE) kan daarna; het fietsraster is er al klaar voor.
+- ~~Fase 6.1, snelle winst.~~ Klaar, zie "Resultaten fase 6.1".
+- **Nu:** bezoekers meten (6.2), daarna de smartphone (6.3). Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -547,6 +548,41 @@ Technisch is het steeds hetzelfde: twee Dijkstra-runs, twee rasters met minuten 
 - Welke vraag komt eerst?
 - Ook drie of meer punten? Dan werkt max nog, het verschil niet.
 - Combineren met de animatie? Pas na 6.4.
+
+### Resultaten fase 6.1: snelle winst (14 okt 2026)
+
+Begonnen met 6.1 in plaats van 6.2 (keuze van de gebruiker). Op branch `fase6`.
+- **Instellingen in de deellink.** De sleutels zijn `w v b d t` uit het plan, plus `f` voor de schakelaar "fietsen over de weg" (zie README, "Deellink").
+  - De naam stopt bij de eerste `&`. Een `&` in een naam blijft werken, want die is gecodeerd als `%26`.
+  - Een waarde telt alleen als het invoerveld hem kan tonen: binnen min/max en op de stap van de schuif, of een bestaande optie. Zo levert `d=99` de standaard op.
+  - Elke wijziging werkt de hash bij via `replaceState`.
+  - Een `hashchange` (een geplakte of getypte link) zet ontbrekende instellingen terug op de standaard.
+- **Deelknop.** Op een touchscherm (`pointer: coarse`) `navigator.share()`, anders kopiëren naar het klembord met de melding "Link gekopieerd". Lukt kopiëren niet, dan verschijnt de link in een `prompt`.
+- **Open Graph en favicon.**
+  - `og:image` is `https://corvanessen.github.io/OVafstand/og.png`, een volledige URL zoals crawlers die willen. Bij een eigen domein aanpassen.
+  - `og.png` (1200 × 630, 495 kB) is een screenshot van heel NL vanaf Utrecht C, met alleen de titel en de legenda in het paneel.
+  - `favicon.svg` heeft concentrische banden uit de kleurschaal en het vertrekpunt in het midden.
+- **Uitleg.**
+  - Een nieuwe ondertitel: "Hoe lang ben je met trein, bus en fiets onderweg naar elke plek in Nederland?"
+  - Een blok "Hoe werkt dit?" over de kleuren, de opbouw van een reis, realistisch en optimistisch, de beperkingen en de bronnen.
+  - De modellen heten nu "Realistisch (met gemiddelde wachttijd)" en "Optimistisch (geen wachttijd)".
+- **Mijn locatie.**
+  - `navigator.geolocation` met `maximumAge: 0`, zodat een tweede klik geen oude positie oplevert.
+  - Buiten het raster verschijnt "Je locatie ligt buiten de kaart". Bij weigeren verschijnt "Geen toestemming".
+- **Voorbeeldchips.** Amsterdam C, Groningen, Middelburg, Terschelling en Winterswijk.
+  - Elke chip is een gewone deellink, dus ook in een nieuw tabblad te openen.
+  - Een gewone klik houdt de instellingen vast.
+- **Klein.** Het legendalabel "3 u" brak af over twee regels; nu `nowrap`.
+- **Getest in headless Chrome:**
+  - een link met `&w=0&t=120&b=7.5&x=3&d=99&f=0` en een naam met `&`;
+  - de hash na een schuif;
+  - een chip;
+  - delen met het klembord;
+  - mijn locatie in Eindhoven en in Parijs, via `Emulation.setGeolocationOverride`;
+  - een `hashchange` terug naar de standaard;
+  - het favicon.
+
+  Alles OK, zonder consolefouten. Ook gecontroleerd: `tsc`, `npm run build` en een screenshot op 390 px breed. Op een echt toestel is het nog niet getest: `navigator.share` en de locatie.
 
 ### 6.6 Volgorde
 

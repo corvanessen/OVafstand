@@ -4,7 +4,7 @@ import { ImageSource, Map as MlMap, Marker, NavigationControl, Popup, ScaleContr
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { LayerSpecification } from "maplibre-gl";
 import { geocode, type Place } from "./geocode";
-import { CORNERS } from "./grid";
+import { CORNERS, cellOf } from "./grid";
 import { BAND_MIN, bandColor } from "./raster";
 import type { Params, Segment } from "./router";
 import type { Request, Response, Station } from "./worker";
@@ -14,48 +14,63 @@ setWorkerUrl(maplibreWorkerUrl);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 // ---------- instellingen ----------
-const params: Params = {
+const DEFAULTS: Params = {
   waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true,
 };
+const params: Params = { ...DEFAULTS };
 let bikeLoaded = false; // het fietsraster komt na de graaf binnen
 
 type NumParam = { [K in keyof Params]: Params[K] extends number ? K : never }[keyof Params];
 
-function bindRange(id: NumParam, fmt: (v: number) => string) {
+const RANGES: [NumParam, (v: number) => string][] = [
+  ["bikeKmh", (v) => `${v} km/u`],
+  ["bikeMaxKm", (v) => `${v} km`],
+  ["directMaxKm", (v) => `${v} km`],
+];
+const modelRadios = [...document.querySelectorAll<HTMLInputElement>("input[name=model]")];
+const realBikeBox = $<HTMLInputElement>("realBike");
+const tMaxSel = $<HTMLSelectElement>("tMaxMin");
+
+for (const [id, fmt] of RANGES) {
   const input = $<HTMLInputElement>(id);
-  const out = $<HTMLOutputElement>(id + "Out");
-  input.value = String(params[id]);
-  out.textContent = fmt(params[id]);
   input.addEventListener("input", () => {
     params[id] = +input.value;
-    out.textContent = fmt(params[id]);
-    scheduleCompute();
+    $(id + "Out").textContent = fmt(params[id]);
+    settingsChanged();
   });
 }
-bindRange("bikeKmh", (v) => `${v} km/u`);
-bindRange("bikeMaxKm", (v) => `${v} km`);
-bindRange("directMaxKm", (v) => `${v} km`);
-for (const el of document.querySelectorAll<HTMLInputElement>("input[name=model]")) {
-  el.checked = +el.value === params.waitFactor;
+for (const el of modelRadios) {
   el.addEventListener("change", () => {
     params.waitFactor = +el.value;
-    scheduleCompute();
+    settingsChanged();
   });
 }
-const realBikeBox = $<HTMLInputElement>("realBike");
-realBikeBox.checked = params.realBike;
 realBikeBox.addEventListener("change", () => {
   params.realBike = realBikeBox.checked;
-  scheduleCompute();
+  settingsChanged();
 });
-
-const tMaxSel = $<HTMLSelectElement>("tMaxMin");
-tMaxSel.value = String(params.tMaxMin);
 tMaxSel.addEventListener("change", () => {
   params.tMaxMin = +tMaxSel.value;
   renderLegend();
-  scheduleCompute();
+  settingsChanged();
 });
+
+/** zet alle invoervelden op de waarden in params */
+function syncControls() {
+  for (const [id, fmt] of RANGES) {
+    $<HTMLInputElement>(id).value = String(params[id]);
+    $(id + "Out").textContent = fmt(params[id]);
+  }
+  for (const el of modelRadios) el.checked = +el.value === params.waitFactor;
+  realBikeBox.checked = params.realBike;
+  tMaxSel.value = String(params.tMaxMin);
+  renderLegend();
+}
+
+function settingsChanged() {
+  writeHash();
+  scheduleCompute();
+}
 
 function renderLegend() {
   const n = Math.ceil(params.tMaxMin / BAND_MIN);
@@ -77,24 +92,74 @@ function renderLegend() {
     labels.append(s);
   }
 }
-renderLegend();
+
+// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1 ----------
+// Alleen afwijkingen van de standaard komen in de link; onbekende of ongeldige waarden worden genegeerd.
+const HASH_KEYS = { w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike" } as const;
+type HashParam = (typeof HASH_KEYS)[keyof typeof HASH_KEYS];
+type Origin = { lat: number; lon: number; name: string };
+
+/** een waarde uit de link, alleen als het bijbehorende invoerveld hem ook kan tonen */
+function parseSetting(key: HashParam, raw: string): number | boolean | null {
+  const v = Number(raw);
+  if (raw === "" || !Number.isFinite(v)) return null;
+  if (key === "realBike") return v === 0 || v === 1 ? v === 1 : null;
+  if (key === "waitFactor") return modelRadios.some((r) => +r.value === v) ? v : null;
+  if (key === "tMaxMin") return [...tMaxSel.options].some((o) => +o.value === v) ? v : null;
+  const input = $<HTMLInputElement>(key);
+  const steps = (v - +input.min) / +input.step;
+  return v >= +input.min && v <= +input.max && Math.abs(steps - Math.round(steps)) < 1e-6 ? v : null;
+}
+
+function readHash(): { origin: Origin; settings: Partial<Params> } | null {
+  // de naam is URL-gecodeerd en bevat dus geen &; daarna volgen de instellingen
+  const m = /^#([-\d.]+),([-\d.]+)(?:,([^&]*))?(.*)$/.exec(location.hash);
+  if (!m || !Number.isFinite(+m[1]) || !Number.isFinite(+m[2])) return null;
+  let name = "";
+  try {
+    name = m[3] ? decodeURIComponent(m[3]) : "";
+  } catch { /* kapotte codering: zonder naam verder */ }
+  const settings: Record<string, number | boolean> = {};
+  for (const part of m[4].split("&")) {
+    const [k, raw] = part.split("=");
+    const key = HASH_KEYS[k as keyof typeof HASH_KEYS];
+    const v = key && raw !== undefined ? parseSetting(key, raw) : null;
+    if (v !== null) settings[key] = v;
+  }
+  return { origin: { lat: +m[1], lon: +m[2], name }, settings: settings as Partial<Params> };
+}
+
+function writeHash() {
+  const { lat, lon, name } = origin;
+  let h = `#${lat.toFixed(5)},${lon.toFixed(5)}${name ? "," + encodeURIComponent(name) : ""}`;
+  for (const [k, key] of Object.entries(HASH_KEYS)) {
+    const v = params[key];
+    if (v !== DEFAULTS[key]) h += `&${k}=${typeof v === "boolean" ? +v : v}`;
+  }
+  history.replaceState(null, "", h);
+}
 
 // ---------- vertrekpunt ----------
-let origin = readHash() ?? { lat: 52.0894, lon: 5.11, name: "Utrecht Centraal" };
-
-function readHash(): { lat: number; lon: number; name: string } | null {
-  const m = /^#([-\d.]+),([-\d.]+)(?:,(.*))?$/.exec(location.hash);
-  return m ? { lat: +m[1], lon: +m[2], name: m[3] ? decodeURIComponent(m[3]) : "" } : null;
-}
+const initial = readHash();
+let origin: Origin = initial?.origin ?? { lat: 52.0894, lon: 5.11, name: "Utrecht Centraal" };
+Object.assign(params, initial?.settings);
+syncControls();
 
 function setOrigin(lat: number, lon: number, name = "") {
   origin = { lat, lon, name };
   marker.setLngLat([lon, lat]);
-  history.replaceState(null, "", `#${lat.toFixed(5)},${lon.toFixed(5)}${name ? "," + encodeURIComponent(name) : ""}`);
+  writeHash();
   $("origin").textContent = name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   popup.remove();
   scheduleCompute();
 }
+
+/** naar een plek vliegen en daar vertrekken (zoeken, voorbeelden, mijn locatie) */
+function goTo(lat: number, lon: number, name = "", zoom = 8.5) {
+  map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), zoom) });
+  setOrigin(lat, lon, name);
+}
+
 
 // ---------- kaart ----------
 const map = new MlMap({
@@ -347,8 +412,7 @@ function pick(i: number) {
   q.value = p.name;
   showResults([]);
   q.blur();
-  map.flyTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 8.5) });
-  setOrigin(p.lat, p.lon, p.name);
+  goTo(p.lat, p.lon, p.name);
 }
 
 q.addEventListener("input", () => {
@@ -386,12 +450,77 @@ q.addEventListener("keydown", (e) => {
 q.addEventListener("blur", () => setTimeout(() => showResults([]), 100));
 
 $("origin").textContent = origin.name || `${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`;
+// een andere hash (zelf getypt of een geplakte deellink): ontbrekende instellingen worden de standaard
 window.addEventListener("hashchange", () => {
   const h = readHash();
-  if (h) {
-    setOrigin(h.lat, h.lon, h.name);
-    map.flyTo({ center: [h.lon, h.lat] });
-  }
+  if (!h) return;
+  Object.assign(params, DEFAULTS, h.settings);
+  syncControls();
+  setOrigin(h.origin.lat, h.origin.lon, h.origin.name);
+  map.flyTo({ center: [h.origin.lon, h.origin.lat] });
 });
 if (matchMedia("(max-width: 640px)").matches) $("panel").classList.add("collapsed");
 $("panelToggle").addEventListener("click", () => $("panel").classList.toggle("collapsed"));
+
+// ---------- voorbeelden, mijn locatie, delen ----------
+const CHIPS: [label: string, lat: number, lon: number, name: string][] = [
+  ["Amsterdam C", 52.3789, 4.9003, "Amsterdam Centraal"],
+  ["Groningen", 53.2105, 6.5641, "Groningen"],
+  ["Middelburg", 51.4955, 3.6166, "Middelburg"],
+  ["Terschelling", 53.3594, 5.2185, "West-Terschelling"],
+  ["Winterswijk", 51.9693, 6.7186, "Winterswijk"],
+];
+for (const [label, lat, lon, name] of CHIPS) {
+  const a = document.createElement("a");
+  a.className = "chip";
+  a.textContent = label;
+  a.href = `#${lat.toFixed(5)},${lon.toFixed(5)},${encodeURIComponent(name)}`; // gewone deellink, ook voor een nieuw tabblad
+  a.addEventListener("click", (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+    ev.preventDefault(); // zo blijven de instellingen staan
+    goTo(lat, lon, name);
+  });
+  $("chips").append(a);
+}
+
+const toastEl = $("toast");
+let toastTimer = 0;
+function toast(msg: string, ms = 3000) {
+  toastEl.textContent = msg;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => (toastEl.hidden = true), ms);
+}
+
+$("locate").addEventListener("click", () => {
+  if (!navigator.geolocation) return toast("Je browser geeft geen locatie door");
+  toast("Locatie zoeken…", 10000);
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude: lat, longitude: lon } = pos.coords;
+      if (cellOf(lat, lon) < 0) return toast("Je locatie ligt buiten de kaart (Nederland en de grensstreek)");
+      toastEl.hidden = true;
+      goTo(lat, lon, "", 11);
+    },
+    (err) => toast(err.code === err.PERMISSION_DENIED ? "Geen toestemming voor je locatie" : "Je locatie is niet gevonden"),
+    { timeout: 10000, maximumAge: 0 },
+  );
+});
+
+$("share").addEventListener("click", async () => {
+  writeHash();
+  const url = location.href;
+  // op een telefoon het deelmenu van het systeem, op de desktop kopiëren
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try {
+      await navigator.share({ title: `OV-afstand vanaf ${$("origin").textContent}`, url });
+    } catch { /* geannuleerd */ }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("Link gekopieerd");
+  } catch {
+    prompt("Kopieer deze link:", url);
+  }
+});
