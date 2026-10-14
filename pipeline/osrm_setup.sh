@@ -32,6 +32,6 @@ fi
 
 echo "== server starten op :5000"
 $DOCKER rm -f "$NAME" >/dev/null 2>&1 || true
-$DOCKER run -d --name "$NAME" -p 5000:5000 -v "$DIR:/data" "$IMG" \
+$DOCKER run -d --restart unless-stopped --name "$NAME" -p 5000:5000 -v "$DIR:/data" "$IMG" \
   osrm-routed --algorithm mld --max-table-size 10000 /data/netherlands-latest.osrm
 echo "klaar: curl 'http://localhost:5000/route/v1/bike/5.11,52.09;5.12,52.10'"

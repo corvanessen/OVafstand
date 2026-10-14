@@ -236,7 +236,8 @@ Fase 3, realistisch fietsen:
 - ~~In één regio uitproberen hoe compact de fietstijden kunnen.~~ Eerste proef klaar (stap 3): een fietsraster met Dijkstra in de browser wint van tabellen per halte.
 - ~~Het fietsraster verbeteren en de rekentijd meten.~~ Klaar (stap 4): 16 richtingen, ±0,5 s voor heel NL.
 - ~~De grootte omlaag brengen en de uitschieters in Utrecht begrijpen.~~ Klaar (stap 5): start in 3 × 3 cellen, 4 bits, ±3–4 MB, fout > 5 min bij <1%.
-- **Nu:** het fietsraster voor heel NL bouwen en inbouwen in de web-app.
+- ~~Het fietsraster voor heel NL bouwen.~~ Klaar (stap 6): `bike.bin.gz`, 2,25 MB.
+- **Nu:** het fietsraster inbouwen in de web-app.
 - Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
@@ -357,8 +358,20 @@ Variant 16, fout = raster − OSRM, zonder correctiefactor:
 
 Het raster is nu in de mediaan 4–7% te lang, zonder correctiefactor. De NL-grootte is geschat vanuit de regio's; de echte waarde volgt pas uit een raster voor heel NL.
 
+### Resultaten fase 3, stap 6: fietsraster voor heel NL (14 okt 2026)
+
+- **`pipeline/build_bike_grid.py`** bouwt het raster met de eigen OSRM-server. Het is te onderbreken: elke rij blokken komt in een eigen bestand in `data/bike_grid/nl/` en wordt bij een nieuwe start overgeslagen. Het resultaat is `data/bike_grid/nl_raw.npz`, met de ruwe afstanden in meters.
+  - Het raster is 1147 × 1380 cellen, gelijk aan `grid.ts`, in 173 rijen van 144 blokken. Netto ±80 min rekenwerk, ±30 s per rij door het midden van het land.
+  - Vannacht stopte de run halverwege, waarschijnlijk door de slaapstand. OSRM bleef daarna doorrekenen aan de afgebroken verzoeken (840% CPU). Een herstart van de container (`docker restart osrm-fiets`) en een nieuwe start van het script loste dat op. De container staat nu op `--restart unless-stopped`.
+  - 499.066 cellen (31,5%) hebben een fietsbare weg binnen 250 m. Er zijn 12,6 mln kanten.
+  - Daarbij komen de startcellen: voor 34.264 halteplekken de afstand naar de knopen van de 3 × 3 cellen eromheen, in 261 s.
+- **`pipeline/export_bike_grid.py`** schrijft `web/public/data/bike.bin.gz`. Het formaat staat in het script.
+  - **2,25 MB gzip** (7,4 MB ruw: kanten 6,3, snap 0,8, startcellen 0,31 MB).
+  - Snoeien haalt 20% van de kanten weg: van 3,33 naar 2,67 mln.
+- **Halteplekken zonder startcel:** 6.286, allemaal in België (Antwerpen, Hasselt, Zonhoven en andere), 0,3–30 km buiten het NL-extract. Dat lost het grensextract op.
+
 **Volgende stap:**
-1. Het fietsraster voor heel NL bouwen (±25.000 OSRM-verzoeken, naar schatting 30–40 min) en de echte grootte meten.
+1. ~~Het fietsraster voor heel NL bouwen en de echte grootte meten.~~ Klaar (stap 6): 2,25 MB gzip.
 2. Het inbouwen in de web-app:
    - het bestand laden met `DecompressionStream`;
    - Dijkstra met een bucketwachtrij in de worker;

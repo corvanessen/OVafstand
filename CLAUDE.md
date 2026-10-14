@@ -10,7 +10,7 @@ Fase 0, 1 en 2 zijn klaar. Fase 3 (realistisch fietsen) loopt:
 - de meting van hemelsbreed × 1,3 is klaar;
 - een eigen OSRM-server draait in WSL.
 
-De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en een halte die start in 3 × 3 cellen. Dijkstra met een bucketwachtrij in de browser kost ±0,5 s voor heel NL. In proefregio's wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3. Volgende stap: het raster voor heel NL bouwen en inbouwen in de web-app (zie het plan).
+De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en een halte die start in 3 × 3 cellen. Dijkstra met een bucketwachtrij in de browser kost ±0,5 s voor heel NL. In proefregio's wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3. Het raster voor heel NL is gebouwd (`build_bike_grid.py` → `export_bike_grid.py` → `web/public/data/bike.bin.gz`, 2,25 MB). Volgende stap: inbouwen in de web-app (zie het plan).
 
 **Afspraak:** na elke afgeronde stap de resultaten en de volgende stap bijwerken in ONTWIKKELPLAN.md, en de stand van zaken hier.
 
@@ -23,6 +23,7 @@ De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en
 
 ## Datapijplijn (`pipeline/`)
 - Volgorde: `extract_day.py <YYYYMMDD>` → `build_graph.py` → `export_web.py`. `stats.py` en `heatmap.py` zijn voor analyse.
+- Fietsraster (fase 3): `build_bike_grid.py` (OSRM op localhost:5000; ±80 min, te onderbreken) → `export_bike_grid.py`. Na een nieuwe GTFS-dag zijn de startcellen per halteplek opnieuw nodig. `bike_check.py`, `bike_grid_test.py` en `grid_bench.mjs` zijn metingen.
 - Bron: `http://gtfs.ovapi.nl/nl/gtfs-nl.zip` (±260 MB) naar `data/raw/`. `data/` staat niet in git.
 - Kies een dinsdag of woensdag buiten de schoolvakanties, binnen `feed_start_date`..`feed_end_date` (feed_info.txt).
 - `web/public/data/{graph.bin,meta.json}` staat **wel** in git. Opnieuw genereren na een data-update.
