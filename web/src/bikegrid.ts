@@ -5,7 +5,7 @@
 
 import { CELL, NX, NY, ROW_SCALE, X0, Y0, cellOf, mercX, mercY } from "./grid";
 import { cone, newRaster, VIA_DIRECT, type Raster } from "./raster";
-import { DETOUR, distM, type Graph, type Params, type Search } from "./router";
+import { DETOUR, distM, fetchGz, type Graph, type Params, type Search } from "./router";
 
 const NONE = 15; // 4-bitswaarde voor "geen kant" / "geen knoop"
 const W = 10; // breedte van een bucket in de wachtrij, seconden
@@ -29,14 +29,8 @@ export interface BikeGrid {
 
 /** laadt bike.bin.gz; geeft null als het bestand ontbreekt of niet past (dan blijft het hemelsbrede model over) */
 export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | null> {
-  const res = await fetch(base + "bike.bin.gz");
-  if (!res.ok) return null;
-  let buf = await res.arrayBuffer();
-  const head = new Uint8Array(buf, 0, 2);
-  if (head[0] === 0x1f && head[1] === 0x8b) {
-    // nog gecomprimeerd (de server zette geen Content-Encoding): zelf uitpakken
-    buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
-  }
+  const buf = await fetchGz(base + "bike.bin.gz");
+  if (!buf) return null;
   const dv = new DataView(buf);
   const magic = new TextDecoder().decode(new Uint8Array(buf, 0, 6));
   const nx = dv.getUint16(8, true), ny = dv.getUint16(10, true), nDirs = dv.getUint16(12, true);

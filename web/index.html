@@ -55,6 +55,14 @@
             <button id="locate" class="small-btn" title="Vertrek vanaf je huidige locatie">⌖ Mijn locatie</button>
             <button id="share" class="small-btn" title="Deel een link naar deze kaart, met je instellingen">↗ Delen</button>
           </div>
+          <div class="time-row" id="timeRow">
+            <label class="time-toggle"><input id="timeOn" type="checkbox" /> Vertrek op een tijdstip</label>
+            <div class="time-ctl" id="timeCtl" hidden>
+              <button id="play" class="play-btn" aria-label="Werkdag afspelen">▶</button>
+              <input id="departMin" type="range" min="0" max="1410" step="30" aria-label="Vertrektijd" />
+              <output id="departOut" class="clock">08:00</output>
+            </div>
+          </div>
           <p class="hint" id="hint">Klik op de kaart of sleep de punt om het vertrekpunt te verplaatsen.</p>
 
           <div class="legend-wrap">
@@ -101,15 +109,18 @@
               Of de hele reis fietsen, als dat sneller is. Het fietsen gaat over echte wegen en fietspaden uit OpenStreetMap.</p>
             <p><b>Realistisch</b> telt bij elke instap de helft van de tijd tussen twee vertrekken als wachttijd (hooguit 30 min).
               <b>Optimistisch</b> doet alsof je overstap altijd klaarstaat.</p>
-            <p><b>Beperkingen.</b> De kaart rekent met een gewone werkdag overdag (07–19 u); 's avonds en in het weekend duurt het vaak langer.
-              Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
+            <p><b>Vertrek op een tijdstip</b> rekent per uur met de echte vertrekken van die dag: de gemiddelde wachttijd
+              als je op een willekeurig moment bij de halte komt. Zo zie je hoe de kaart 's avonds en 's nachts krimpt.
+              Met ▶ loopt de klok een werkdag door.</p>
+            <p><b>Beperkingen.</b> Zonder tijdstip rekent de kaart met een gewone werkdag overdag (07–19 u). Het weekend zit er niet in,
+              en lijnen die alleen 's nachts rijden ook niet. Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
             <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.
               Bezoeken worden geteld met GoatCounter, zonder cookies en zonder je locatie.</p>
           </details>
 
           <p id="status" class="status">Netwerk laden…</p>
           <footer>
-            Dienstregeling van <span id="dataDate">…</span> (werkdag, 07–19 u) · overstappen kost 0 min ·
+            Dienstregeling van <span id="dataDate">…</span> (<span id="dataWindow">werkdag, 07–19 u</span>) · overstappen kost 0 min ·
             <span id="bikeNote">fietsafstand hemelsbreed × 1,3</span>
           </footer>
         </div>

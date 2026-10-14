@@ -242,7 +242,8 @@ Fase 3, realistisch fietsen:
 - ~~Fase 6.1, snelle winst.~~ Klaar, zie "Resultaten fase 6.1".
 - ~~Bezoekers meten (6.2).~~ Klaar, zie "Resultaten fase 6.2".
 - ~~De smartphone (6.3).~~ Klaar in de emulatie, zie "Resultaten fase 6.3". Testen op een echt toestel moet de gebruiker nog doen.
-- **Nu:** de animatie van een werkdag (6.4), te beginnen met het uurmodel in de pijplijn. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
+- ~~6.4 deel 1: het uurmodel en een tijdschuif met afspelen.~~ Klaar, zie "Resultaten fase 6.4, deel 1".
+- **Nu:** 6.4 deel 2: twee frames vooruit rekenen, een overgang tussen de frames, en het diagram met het oppervlak binnen 1 uur. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -629,6 +630,72 @@ Op branch `fase6-smartphone`. Alles geldt onder 640 px breed; daarboven blijft h
 - **Getest in headless Chrome** als telefoon (390 × 844, touch-emulatie, tikken en vegen via `Input.dispatchTouchEvent`). Alle 22 controles zijn OK, zonder consolefouten, en ook de desktoptests van 6.1 zijn nog OK.
   - Gecontroleerd: de standen, de chip, de tik op de kaart, "Vertrek vanaf hier", vegen omhoog en omlaag, tikken op de greep, de focus op het zoekveld, de tikdoelen, de positie van de kaartbediening en de melding voor oude browsers.
   - **Nog niet gedaan:** een echte iPhone (Safari) en een Android-toestel, staand en liggend.
+
+### Resultaten fase 6.4, deel 1: uurmodel en tijdschuif (14 okt 2026)
+
+Op branch `fase6-animatie`.
+
+**Pijplijn:**
+- `build_graph.py` berekent per lijnknoop de **gemiddelde wachttijd per uur** (`line_wait_h`). Dat is de wachttijd voor iemand die op een willekeurig moment in dat uur aankomt, tot het eerstvolgende vertrek in dezelfde corridor als `headway_comb_s`.
+  - De vertrekken komen uit de hele dag, niet alleen 07–19 u. Tijden na 24:00 tellen als de nacht van deze dag. Na het laatste vertrek volgt het eerste van de volgende dag.
+  - Gerekend wordt per minuut (het midden van elke minuut), daarna gemiddeld per uur. Zo telt een onregelmatige dienst zwaarder dan ½ interval, en een nachtelijk gat telt ook mee.
+  - Dat kost ±10 s extra; `build_graph.py` duurt nu 32 s.
+  - `graph.bin` en `meta.json` bleven gelijk (op de verwijzing `hours` na). Dat is gecontroleerd met git.
+- **Mediane wachttijd per lijnknoop:** 15 min om 12 u, 173 min om 3 u.
+- `export_web.py` schrijft `hours.bin.gz`: Uint8[78.140 instapkanten × 24], in minuten, met 255 voor geen vertrek binnen 254 min. Het bestand is **0,44 MB**. In `meta.json` staat `hours`.
+
+**Browser:**
+- `loadHours` laadt het bestand pas als er een vertrektijd gekozen is (23 ms in Node). Daarbij komt `fetchGz` als gedeelde helper, ook voor `bike.bin.gz`.
+- **In `search`.** Met `departMin` kost een instapkant de wachttijd van het uur van de kloktijd (vertrektijd + label). Bij 255 is de kant dicht. De wachtfactor telt dan niet: het is altijd de echte wachttijd. `pathTo` en de tooltip kloppen vanzelf, want die lezen de wachttijd uit de labels.
+- **UI.**
+  - Een vinkje "Vertrek op een tijdstip". Met een tijd verschijnen een schuif van 00:00 tot 23:30 (per 30 min), een klok en ▶.
+  - Afspelen schuift 30 min per stap, minstens 700 ms per stap, en springt na middernacht door.
+  - Met een tijd staan de modelknoppen uit, en de voetregel zegt "werkdag, vertrek 08:30".
+  - Deellink `u` (minuten).
+  - GoatCounter-gebeurtenis `animatie-gestart`.
+  - Op mobiel blijft de tijdregel ook in de ingeklapte sheet staan.
+
+**Reistijden** (fietsraster, Node, min):
+
+| Vanaf Utrecht C | Amsterdam C | Rotterdam C | Groningen | Maastricht | Houten | Ruinen |
+|---|---|---|---|---|---|---|
+| gemiddeld 07–19 | 38 | 44 | 129 | 123 | 22 | 117 |
+| 08:30 | 38 | 44 | 130 | 123 | 23 | 123 |
+| 18:00 | 38 | 44 | 130 | 123 | 22 | 134 |
+| 21:00 | 41 | 48 | 130 | 126 | 24 | 134 |
+| 23:00 | 48 | 48 | 130 | 129 | 24 | – |
+| 01:00 | 141 | 119 | – | – | 40 | – |
+| 03:00 | 78 | 173 | – | – | 40 | – |
+| 05:30 | 60 | 59 | 150 | 157 | 35 | 134 |
+
+- **Rekentijd:** het netwerk kost 10–120 ms per frame en de kaart ±200–500 ms. 's Nachts is het sneller, want er wordt minder bereikt.
+- **Getest in headless Chrome:**
+  - een link met `u=1380`: klok 23:00, modelknoppen uit, voetregel klopt;
+  - afspelen van 23:00 tot 04:00, over middernacht, ±0,7 s per stap;
+  - pauze;
+  - de hash volgt de klok;
+  - uit- en weer aanzetten;
+  - op mobiel de ingeklapte sheet met de tijdregel.
+
+**Sheet op de telefoon (na een test op een echt toestel).** Het vergroten en verkleinen reageerde stroef. De greep was maar 28 px hoog, de sheet bewoog niet mee, en een korte veeg viel terug naar de oude stand. Nu:
+- de greep (36 px) én de kop zijn samen het grijpvlak;
+- de sheet volgt de vinger tijdens het slepen;
+- bij loslaten springt hij naar de dichtstbijzijnde stand;
+- een veeg sneller dan 0,3 px/ms, of een sleepbeweging van meer dan 30 px, gaat minstens één stand verder;
+- het toetsenbord werkt via Enter of spatie, niet meer via `click` met `detail === 0`.
+
+Getest in de emulatie: korte veeg, langzaam slepen omhoog en omlaag, en tikken op de greep en op de kop.
+
+**Beperkingen en open punten:**
+- **Rijtijden.** Die zijn nog de kortste uit 07–19 u.
+- **Ontbrekende lijnen.** Lijnen die alleen buiten 07–19 u rijden ontbreken, zoals nachtbussen en de nachttreinen als die een eigen route-id hebben. Daardoor is de nacht te somber.
+- **Tijdsprongen.** Een wachttijd uit het ene uur kan voorbij het volgende vertrek reiken, dus de FIFO-eigenschap geldt maar bij benadering.
+- **Uit plan 6.4 nog niet gedaan:**
+  - twee frames vooruit rekenen;
+  - de overgang met twee `ImageSource`-lagen;
+  - het lijndiagram met het oppervlak binnen 1 uur;
+  - 48 halve uren in plaats van 24 uren;
+  - het weekend.
 
 ### 6.6 Volgorde
 

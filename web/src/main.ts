@@ -27,7 +27,7 @@ function track(event: string) {
 
 // ---------- instellingen ----------
 const DEFAULTS: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true,
+  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true, departMin: null,
 };
 const params: Params = { ...DEFAULTS };
 let bikeLoaded = false; // het fietsraster komt na de graaf binnen
@@ -67,6 +67,74 @@ tMaxSel.addEventListener("change", () => {
   settingsChanged();
 });
 
+// ---------- vertrektijd (uurmodel) en de werkdag afspelen ----------
+const timeOn = $<HTMLInputElement>("timeOn");
+const departSlider = $<HTMLInputElement>("departMin");
+const playBtn = $<HTMLButtonElement>("play");
+const DEFAULT_DEPART = 8 * 60;
+const FRAME_STEP_MIN = 30;
+const FRAME_MS = 700; // minimale tijd per stap tijdens afspelen
+let playing = false;
+let frameShownAt = 0;
+
+const clock = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+timeOn.addEventListener("change", () => {
+  params.departMin = timeOn.checked ? +departSlider.value : null;
+  if (!timeOn.checked) setPlaying(false);
+  syncTime();
+  settingsChanged();
+});
+departSlider.addEventListener("input", () => {
+  setPlaying(false);
+  params.departMin = +departSlider.value;
+  syncTime();
+  settingsChanged();
+});
+playBtn.addEventListener("click", () => {
+  setPlaying(!playing);
+  if (playing) {
+    track("animatie-gestart");
+    nextFrame();
+  }
+});
+
+function setPlaying(on: boolean) {
+  playing = on;
+  playBtn.textContent = on ? "❚❚" : "▶";
+  playBtn.setAttribute("aria-label", on ? "Pauzeren" : "Werkdag afspelen");
+}
+
+/** een stap verder in de werkdag (na middernacht weer van voren af aan) */
+function nextFrame() {
+  if (!playing || params.departMin === null) return;
+  params.departMin = (params.departMin + FRAME_STEP_MIN) % 1440;
+  syncTime();
+  writeHash();
+  compute();
+}
+
+/** na elk resultaat: tijdens afspelen de volgende stap, maar niet sneller dan FRAME_MS */
+function onFrameShown() {
+  if (!playing) return;
+  const wait = Math.max(0, FRAME_MS - (performance.now() - frameShownAt));
+  frameShownAt = performance.now() + wait;
+  setTimeout(nextFrame, wait);
+}
+
+function syncTime() {
+  const on = params.departMin !== null;
+  timeOn.checked = on;
+  $("timeCtl").hidden = !on;
+  $("timeRow").classList.toggle("active", on);
+  if (on) departSlider.value = String(params.departMin);
+  $("departOut").textContent = clock(on ? params.departMin! : +departSlider.value);
+  // met een tijdstip telt altijd de echte wachttijd van dat uur
+  for (const el of modelRadios) el.disabled = on;
+  $("dataWindow").textContent = on ? `werkdag, vertrek ${clock(params.departMin!)}` : "werkdag, 07–19 u";
+}
+departSlider.value = String(DEFAULT_DEPART);
+
 /** zet alle invoervelden op de waarden in params */
 function syncControls() {
   for (const [id, fmt] of RANGES) {
@@ -77,6 +145,7 @@ function syncControls() {
   realBikeBox.checked = params.realBike;
   tMaxSel.value = String(params.tMaxMin);
   renderLegend();
+  syncTime();
 }
 
 function settingsChanged() {
@@ -105,9 +174,11 @@ function renderLegend() {
   }
 }
 
-// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1 ----------
+// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480 ----------
 // Alleen afwijkingen van de standaard komen in de link; onbekende of ongeldige waarden worden genegeerd.
-const HASH_KEYS = { w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike" } as const;
+const HASH_KEYS = {
+  w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike", u: "departMin",
+} as const;
 type HashParam = (typeof HASH_KEYS)[keyof typeof HASH_KEYS];
 type Origin = { lat: number; lon: number; name: string };
 
@@ -263,6 +334,7 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
     hasResult = true;
     flushExplain();
     if (pending) compute();
+    else onFrameShown();
   } else if (m.type === "explain") {
     onExplain(m);
   } else if (m.type === "error") {
@@ -511,33 +583,86 @@ function setSheet(s: Sheet) {
 // via een gedeelde link gaat het om de kaart; bij een eerste bezoek om zoeken en de voorbeelden
 setSheet(location.hash ? "collapsed" : "half");
 
-// greep: tikken klapt open of dicht, vegen gaat een stand omhoog of omlaag
+// Slepen aan de greep of de kop: de sheet volgt de vinger, en springt bij loslaten naar de
+// dichtstbijzijnde stand (een snelle veeg: een stand verder in die richting). Tikken klapt open of dicht.
 const grip = $("grip");
-let gripY: number | null = null;
-grip.addEventListener("pointerdown", (e) => {
-  gripY = e.clientY;
-  grip.setPointerCapture(e.pointerId);
-});
-grip.addEventListener("pointerup", (e) => {
-  if (gripY === null) return;
-  const dy = e.clientY - gripY;
-  gripY = null;
-  const i = SHEETS.indexOf(panel.dataset.sheet as Sheet);
-  if (Math.abs(dy) < 10) setSheet(i === 0 ? "half" : "collapsed");
-  else setSheet(SHEETS[Math.max(0, Math.min(SHEETS.length - 1, i + (dy < 0 ? 1 : -1)))]);
-});
-grip.addEventListener("pointercancel", () => (gripY = null));
-// geen nagestuurde klik na een tik: na het inklappen ligt de kaart onder de vinger, en die klik
-// zou daar de reisinfo openen (en de sheet weer half openzetten)
-grip.addEventListener("touchend", (e) => e.cancelable && e.preventDefault(), { passive: false });
-grip.addEventListener("click", (e) => {
-  if (e.detail === 0) setSheet(panel.dataset.sheet === "collapsed" ? "half" : "collapsed"); // toetsenbord
+const FLICK = 0.3; // px/ms: sneller dan dit telt als veeg
+const NUDGE = 30; // px: wie verder sleept, gaat minstens een stand in die richting
+let collapsedH = 120; // gemeten in de ingeklapte stand (hangt af van de tijdregel)
+let drag: { id: number; y0: number; h0: number; from: Sheet; moved: boolean; y: number; t: number; v: number } | null = null;
+
+const targetH = (s: Sheet) =>
+  s === "collapsed" ? collapsedH : window.innerHeight * (s === "half" ? 0.45 : 0.85);
+
+function dragStart(e: PointerEvent) {
+  if (!narrow.matches || drag || (e.pointerType === "mouse" && e.button !== 0)) return;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  drag = { id: e.pointerId, y0: e.clientY, h0: panel.offsetHeight, from: panel.dataset.sheet as Sheet,
+    moved: false, y: e.clientY, t: e.timeStamp, v: 0 };
+}
+function dragMove(e: PointerEvent) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dy = e.clientY - drag.y0;
+  if (!drag.moved) {
+    if (Math.abs(dy) < 6) return;
+    drag.moved = true;
+    panel.classList.add("dragging");
+    panel.dataset.sheet = "full"; // alle inhoud zichtbaar; de hoogte volgt de vinger
+  }
+  if (e.timeStamp > drag.t) drag.v = (e.clientY - drag.y) / (e.timeStamp - drag.t);
+  drag.y = e.clientY;
+  drag.t = e.timeStamp;
+  const h = Math.min(targetH("full"), Math.max(collapsedH * 0.8, drag.h0 - dy));
+  panel.style.height = panel.style.maxHeight = `${h}px`;
+}
+function dragEnd(e: PointerEvent) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const d = drag;
+  drag = null;
+  if (!d.moved) {
+    setSheet(d.from === "collapsed" ? "half" : "collapsed");
+    return;
+  }
+  const h = panel.offsetHeight;
+  const dy = e.clientY - d.y0;
+  const i = SHEETS.indexOf(d.from);
+  const step = (dir: number) => SHEETS[Math.max(0, Math.min(SHEETS.length - 1, i + dir))];
+  let to: Sheet;
+  if (e.type === "pointercancel") to = d.from;
+  else if (Math.abs(d.v) > FLICK) to = step(d.v < 0 ? 1 : -1);
+  else {
+    to = SHEETS.reduce((a, b) => (Math.abs(targetH(b) - h) < Math.abs(targetH(a) - h) ? b : a));
+    if (to === d.from && Math.abs(dy) > NUDGE) to = step(dy < 0 ? 1 : -1);
+  }
+  // vanaf de huidige hoogte naar de nieuwe stand laten glijden
+  panel.style.height = "";
+  panel.style.maxHeight = `${h}px`;
+  void panel.offsetHeight;
+  panel.classList.remove("dragging");
+  setSheet(to);
+  requestAnimationFrame(() => (panel.style.maxHeight = ""));
+}
+for (const zone of [grip, panel.querySelector("header")!]) {
+  zone.addEventListener("pointerdown", dragStart);
+  zone.addEventListener("pointermove", dragMove);
+  zone.addEventListener("pointerup", dragEnd);
+  zone.addEventListener("pointercancel", dragEnd);
+  // geen nagestuurde klik na een tik: na het inklappen ligt de kaart onder de vinger, en die klik
+  // zou daar de reisinfo openen (en de sheet weer half openzetten)
+  zone.addEventListener("touchend", (e) => e.cancelable && e.preventDefault(), { passive: false });
+}
+grip.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  e.preventDefault();
+  setSheet(panel.dataset.sheet === "collapsed" ? "half" : "collapsed");
 });
 q.addEventListener("focus", () => narrow.matches && setSheet("full")); // ruimte voor de resultaten boven het toetsenbord
 
 // kaartbediening en meldingen blijven boven de sheet
-const setSheetHeight = () =>
+const setSheetHeight = () => {
   document.documentElement.style.setProperty("--sheet-h", narrow.matches ? `${panel.offsetHeight}px` : "0px");
+  if (narrow.matches && !drag && panel.dataset.sheet === "collapsed") collapsedH = panel.offsetHeight;
+};
 new ResizeObserver(setSheetHeight).observe(panel);
 narrow.addEventListener("change", setSheetHeight);
 

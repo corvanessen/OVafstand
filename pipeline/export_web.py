@@ -13,7 +13,12 @@ met byte-offsets in meta.json:
   cost       Uint16[nEdge]         seconden; bij instapkanten (kind=1) het interval in seconden
   kind       Uint8[nEdge]          0 = vaste kost, 1 = instappen (kost = min(f * interval, cap))
 Knopen 0..nArea-1 zijn halteplekken, nArea..nNode-1 zijn lijnknopen (route+richting @ halteplek).
+
+hours.bin.gz (uurmodel, fase 6.4; gzip): Uint8[nBoard × 24], per instapkant (kind=1, in de volgorde
+van graph.bin) de gemiddelde wachttijd in minuten voor elk uur van de dag; 255 = geen vertrek binnen
+254 min. De browser laadt het pas als er een vertrektijd gekozen wordt.
 """
+import gzip
 import json
 import sys
 from pathlib import Path
@@ -45,9 +50,11 @@ def main():
     cost = np.r_[g["line_headway_comb"][b], np.zeros(a.sum()), g["ride_t"], g["walk_t"]]
     kind = np.r_[np.full(b.sum(), KIND_BOARD), np.full(a.sum() + len(g["ride_u"]) + len(g["walk_u"]), KIND_FIXED)]
     cost = np.clip(np.round(cost), 0, 65535).astype(np.uint16)
+    line_row = np.r_[np.nonzero(b)[0], np.full(len(u) - b.sum(), -1)]   # instapkant -> lijnknoop
 
     order = np.argsort(u, kind="stable")
     u, v, cost, kind = u[order], v[order], cost[order], kind[order].astype(np.uint8)
+    line_row = line_row[order]
     offsets = np.zeros(n_node + 1, np.uint32)
     np.cumsum(np.bincount(u, minlength=n_node), out=offsets[1:])
 
@@ -83,8 +90,17 @@ def main():
             f.write(arr.tobytes())
             pos += arr.nbytes
 
+    # uurmodel: wachttijd per instapkant per uur, in minuten
+    wait_h = g["line_wait_h"][line_row[kind == KIND_BOARD]] / 60
+    hours = np.where(np.isfinite(wait_h), np.clip(np.round(wait_h), 0, 255), 255)
+    hours[hours > 254] = 255
+    hours = hours.astype(np.uint8)
+    (OUT / "hours.bin.gz").write_bytes(gzip.compress(hours.tobytes(), 9))
+    print(f"hours.bin.gz: {hours.shape[0]:,} instapkanten × 24 uur, {(OUT / 'hours.bin.gz').stat().st_size / 1e6:.2f} MB")
+
     meta = {
         "date": DATE,
+        "hours": {"file": "hours.bin.gz", "nBoard": int(hours.shape[0]), "bins": 24},
         "nArea": n_area, "nLine": n_line, "nNode": n_node, "nEdge": int(len(v)),
         "layout": layout,
         "areaNames": [str(s) for s in g["area_name"]],

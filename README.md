@@ -152,6 +152,7 @@ Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.1
 | `d` | fietsen vanaf vertrekpunt, max (km) | 15 |
 | `t` | kleurschaal tot (min) | 180 |
 | `f` | fietsen over de weg (1) of hemelsbreed × 1,3 (0) | 1 |
+| `u` | vertrektijd in minuten na middernacht (uurmodel), stappen van 30 | geen: gemiddelde werkdag 07–19 u |
 
 Een waarde die het invoerveld niet kan tonen, wordt genegeerd. Oude links met alleen `#lat,lon,naam` werken nog.
 

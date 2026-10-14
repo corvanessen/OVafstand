@@ -3,7 +3,7 @@
 import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "./bikegrid";
 import { NX, NY, cellOf } from "./grid";
 import { colorize, rasterize, VIA_DIRECT, VIA_NONE, type Raster } from "./raster";
-import { loadGraph, pathTo, search, straightAccess, type Graph, type Params, type Search, type Segment } from "./router";
+import { loadGraph, loadHours, pathTo, search, straightAccess, type Graph, type Params, type Search, type Segment } from "./router";
 
 export type Request =
   | { type: "init"; base: string }
@@ -39,6 +39,7 @@ function trainStations(g: Graph): Station[] {
 }
 
 let graph: Graph | null = null;
+let base = "";
 let bike: BikeGrid | null = null;
 let last: { s: Search; r: Raster } | null = null;
 
@@ -49,6 +50,7 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
   try {
     if (m.type === "init") {
       const t0 = performance.now();
+      base = m.base;
       graph = await loadGraph(m.base);
       post({ type: "ready", date: graph.date, nArea: graph.nArea, ms: performance.now() - t0,
         stations: trainStations(graph) });
@@ -61,6 +63,8 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       }
       post({ type: "bikeReady", ok: bike !== null, ms: performance.now() - t1, nNode: bike?.nNode ?? 0 });
     } else if (m.type === "compute" && graph) {
+      // het uurmodel (±0,4 MB) pas laden als er een vertrektijd gekozen is
+      if (m.params.departMin !== null && !(await loadHours(base, graph))) m.params.departMin = null;
       const t0 = performance.now();
       const useBike = m.params.realBike && bike !== null;
       const init = useBike
