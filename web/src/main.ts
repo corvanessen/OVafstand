@@ -265,6 +265,7 @@ function onExplain(m: Extract<Response, { type: "explain" }>) {
     if (lastPointerType === "touch") return;
     tooltip.innerHTML = explainHtml(m);
     tooltip.hidden = false;
+    placeTooltip(); // de grootte kan veranderd zijn
   } else if (t?.via === "popup") {
     const box = document.createElement("div");
     box.innerHTML = explainHtml(m);
@@ -284,12 +285,25 @@ let lastPointerType = "mouse";
 map.getCanvasContainer().addEventListener("pointerdown", (ev) => (lastPointerType = ev.pointerType), true);
 map.getCanvasContainer().addEventListener("pointermove", (ev) => (lastPointerType = ev.pointerType), true);
 
+// rechtsonder de muis, maar links of boven de muis als hij anders buiten de kaart valt
+let tooltipAt: [number, number] = [0, 0];
+function placeTooltip() {
+  const [x, y] = tooltipAt;
+  const w = tooltip.offsetWidth, h = tooltip.offsetHeight;
+  const W = window.innerWidth, H = window.innerHeight;
+  let left = x + 16, top = y + 16;
+  if (left + w > W - 8) left = Math.max(8, x - 16 - w);
+  if (top + h > H - 8) top = Math.max(8, y - 16 - h);
+  tooltip.style.transform = `translate(${left}px, ${top}px)`;
+}
+
 map.on("mousemove", (e) => {
   if (lastPointerType === "touch") {
     tooltip.hidden = true;
     return;
   }
-  tooltip.style.transform = `translate(${e.point.x + 16}px, ${e.point.y + 16}px)`;
+  tooltipAt = [e.point.x, e.point.y];
+  placeTooltip();
   requestExplain(e.lngLat.lat, e.lngLat.lng, "hover");
 });
 map.getCanvas().addEventListener("mouseleave", () => (tooltip.hidden = true));
