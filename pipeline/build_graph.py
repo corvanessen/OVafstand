@@ -36,6 +36,43 @@ def to_xy(lat, lon):
     return np.c_[np.asarray(lon) * KX, np.asarray(lat) * KY]
 
 
+def hourly_waits(st_day, serve, g_next):
+    """Uurmodel (fase 6.4): gemiddelde wachttijd (s) per lijnknoop en per uur van de dag.
+
+    Voor iemand die op een willekeurig moment in dat uur bij de halte komt, tot het eerstvolgende
+    vertrek in dezelfde corridor als headway_comb_s (alle ritten naar de drukste volgende halte).
+    Bij een regelmatige dienst is dat ½ interval; gaten (avond, nacht) tellen vanzelf mee.
+    Tijden na middernacht (≥ 24:00) gelden als de nacht van deze dag; na het laatste vertrek
+    volgt het eerste vertrek van de volgende dag (dezelfde dienstregeling).
+    """
+    tid = st_day.trip_id.to_numpy()
+    i0 = np.nonzero(tid[1:] == tid[:-1])[0]
+    p = pd.DataFrame({
+        "group": st_day.group.to_numpy()[i0],
+        "a0": st_day.a.to_numpy()[i0], "a1": st_day.a.to_numpy()[i0 + 1],
+        "dep": st_day.dep.to_numpy()[i0] % 86400,
+        "board": st_day.pickup_type.to_numpy()[i0] != 1,
+    })
+    p = p[(p.a0 != p.a1) & p.board]
+    corr = {k: np.sort(v.to_numpy()) for k, v in p.groupby(["a0", "a1"]).dep}
+    own = {k: np.sort(v.to_numpy()) for k, v in p.groupby(["group", "a0"]).dep}
+    top = g_next.loc[g_next.groupby(["group", "a0"]).n_corr.idxmax()]
+    best = dict(zip(zip(top.group, top.a0), top.a1))
+
+    t = np.arange(24 * 60) * 60 + 30.0   # het midden van elke minuut
+    out = np.full((len(serve), 24), np.inf, np.float32)
+    for i, (g, a) in enumerate(zip(serve.group, serve.a)):
+        a1 = best.get((g, a))
+        deps = corr.get((a, a1)) if a1 is not None else None
+        if deps is None:
+            deps = own.get((g, a))   # eindhalte of geen corridor: de eigen vertrekken
+        if deps is None or len(deps) == 0:
+            continue
+        d = np.r_[deps, deps[0] + 86400]
+        out[i] = (d[np.searchsorted(d, t)] - t).reshape(24, 60).mean(1)
+    return out
+
+
 def main():
     stops = pd.read_pickle(D / "stops.pkl")
     routes = pd.read_pickle(D / "routes.pkl")
@@ -58,11 +95,13 @@ def main():
 
     # --- ritten binnen het venster, gegroepeerd per route+richting
     st = st.sort_values(["trip_id", "stop_sequence"]).reset_index(drop=True)
-    start = st.groupby("trip_id").dep.transform("min")
-    st = st[(start >= WINDOW[0]) & (start < WINDOW[1])].reset_index(drop=True)
     trips["group"] = trips.route_id + "|" + trips.direction_id.fillna("0")
     st = st.merge(trips[["trip_id", "group", "route_id"]], on="trip_id")
+    st = st.sort_values(["trip_id", "stop_sequence"]).reset_index(drop=True)
     st["a"] = st.area.map(area_idx).to_numpy()
+    st_day = st   # de hele dag, voor het uurmodel (fase 6.4)
+    start = st.groupby("trip_id").dep.transform("min")
+    st = st[(start >= WINDOW[0]) & (start < WINDOW[1])].reset_index(drop=True)
 
     # opeenvolgende paren binnen elke rit
     same = st.trip_id.to_numpy()[1:] == st.trip_id.to_numpy()[:-1]
@@ -98,6 +137,10 @@ def main():
                         index=pd.MultiIndex.from_frame(serve[["group", "a"]]))
     print(f"lijnknopen: {len(serve):,}  ({serve.group.nunique():,} route-richtingen)")
 
+    line_wait_h = hourly_waits(st_day, serve, g_next)
+    print(f"uurmodel: mediane wachttijd 12 u {np.nanmedian(np.where(np.isfinite(line_wait_h[:, 12]), line_wait_h[:, 12], np.nan)) / 60:.1f} min, "
+          f"3 u {np.nanmedian(np.where(np.isfinite(line_wait_h[:, 3]), line_wait_h[:, 3], np.nan)) / 60:.1f} min")
+
     ride["u"] = node_of.reindex(pd.MultiIndex.from_frame(ride[["group", "a0"]])).to_numpy()
     ride["v"] = node_of.reindex(pd.MultiIndex.from_frame(ride[["group", "a1"]])).to_numpy()
 
@@ -124,6 +167,7 @@ def main():
         line_node=serve.node.to_numpy(np.int32), line_area=serve.a.to_numpy(np.int32),
         line_headway=serve.headway_s.to_numpy(np.float32),
         line_headway_comb=serve.headway_comb_s.to_numpy(np.float32),
+        line_wait_h=line_wait_h,
         line_board=serve.can_board.to_numpy(bool), line_alight=serve.can_alight.to_numpy(bool),
         line_route_type=serve.route_type.to_numpy(np.int8),
         line_group=serve.group.to_numpy(str),
