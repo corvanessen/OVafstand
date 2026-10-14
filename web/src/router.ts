@@ -17,7 +17,8 @@ export interface Graph {
   areaNames: string[];
   routes: Route[];
   hoursFile: string | null;
-  /** uurmodel (na loadHours): wachttijd in minuten per instapkant per uur, 255 = geen vertrek */
+  hourBins: number; // tijdvakken per dag in het uurmodel
+  /** uurmodel (na loadHours): wachttijd in minuten per instapkant per tijdvak, 255 = geen vertrek */
   hours: Uint8Array | null;
   /** per kant de rij in hours (alleen instapkanten), anders -1 */
   boardRow: Int32Array | null;
@@ -38,7 +39,8 @@ export interface Params {
 
 export const DETOUR = 1.3; // hemelsbreed -> over de weg
 const KIND_BOARD = 1;
-const HOUR_BINS = 24;
+const KIND_NIGHT = 2; // rijkant die alleen buiten 07–19 u bestaat: alleen in het uurmodel
+const CLOSED = 65535; // instapkost van een lijnknoop die in 07–19 u niet rijdt
 const NO_SERVICE = 255;
 
 /** haalt een .gz-bestand op en pakt het zelf uit als de server geen Content-Encoding zette; null bij 404 */
@@ -61,7 +63,7 @@ export async function loadHours(base: string, g: Graph): Promise<boolean> {
   const boardRow = new Int32Array(g.kind.length).fill(-1);
   let n = 0;
   for (let e = 0; e < g.kind.length; e++) if (g.kind[e] === KIND_BOARD) boardRow[e] = n++;
-  if (hours.length !== n * HOUR_BINS) {
+  if (hours.length !== n * g.hourBins) {
     console.warn("hours.bin.gz past niet bij deze graaf", hours.length, n);
     return false;
   }
@@ -90,6 +92,7 @@ export async function loadGraph(base: string): Promise<Graph> {
     areaNames: meta.areaNames,
     routes: meta.routes,
     hoursFile: meta.hours?.file ?? null,
+    hourBins: meta.hours?.bins ?? 24,
     hours: null,
     boardRow: null,
   };
@@ -189,20 +192,27 @@ export function search(g: Graph, init: Float64Array, p: Params): Search {
   const hours = p.departMin !== null ? g.hours : null;
   const boardRow = g.boardRow!;
   const t0 = (p.departMin ?? 0) * 60;
+  const bins = g.hourBins;
   while (heap.size > 0) {
     const u = heap.pop();
     const du = heap.topKey;
     if (du > dist[u]) continue;
     if (du > tMax) break;
-    const hour = Math.floor((t0 + du) / 3600) % HOUR_BINS;
+    const bin = Math.floor(((t0 + du) / 86400) * bins) % bins;
     for (let e = offsets[u], end = offsets[u + 1]; e < end; e++) {
+      const k = kind[e];
       let w: number;
-      if (kind[e] !== KIND_BOARD) w = cost[e];
-      else if (hours) {
-        const m = hours[boardRow[e] * HOUR_BINS + hour];
-        if (m === NO_SERVICE) continue;
-        w = m * 60;
-      } else w = Math.min(p.waitFactor * cost[e], waitCap);
+      if (k === KIND_BOARD) {
+        if (hours) {
+          const m = hours[boardRow[e] * bins + bin];
+          if (m === NO_SERVICE) continue;
+          w = m * 60;
+        } else {
+          if (cost[e] === CLOSED) continue; // rijdt niet overdag
+          w = Math.min(p.waitFactor * cost[e], waitCap);
+        }
+      } else if (k === KIND_NIGHT && !hours) continue;
+      else w = cost[e];
       const nd = du + w;
       const t = target[e];
       if (nd < dist[t]) {

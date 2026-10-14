@@ -243,6 +243,7 @@ Fase 3, realistisch fietsen:
 - ~~Bezoekers meten (6.2).~~ Klaar, zie "Resultaten fase 6.2".
 - ~~De smartphone (6.3).~~ Klaar in de emulatie, zie "Resultaten fase 6.3". Testen op een echt toestel moet de gebruiker nog doen.
 - ~~6.4 deel 1: het uurmodel en een tijdschuif met afspelen.~~ Klaar, zie "Resultaten fase 6.4, deel 1".
+- ~~Nachtlijnen en halve uren in het uurmodel.~~ Klaar, zie "Resultaten fase 6.4: nachtlijnen en halve uren".
 - **Nu:** 6.4 deel 2: twee frames vooruit rekenen, een overgang tussen de frames, en het diagram met het oppervlak binnen 1 uur. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
@@ -696,6 +697,42 @@ Getest in de emulatie: korte veeg, langzaam slepen omhoog en omlaag, en tikken o
   - het lijndiagram met het oppervlak binnen 1 uur;
   - 48 halve uren in plaats van 24 uren;
   - het weekend.
+
+### Resultaten fase 6.4: nachtlijnen en halve uren (15 okt 2026)
+
+Op branch `fase6-nacht`. In deel 1 was de nacht te somber: de graaf bevatte alleen ritten die tussen 07 en 19 u beginnen.
+- **Hoeveel.** 324 route-richtingen rijden alleen buiten 07–19 u, met 1.299 ritten.
+  - Het zijn vooral nachtbussen.
+  - Daarnaast 78 treinritten: NS heeft per treinserie een eigen route-id, dus ook het nachtnet, vroege en late series, de Nightjet en de bussen die de trein vervangen.
+- **Pijplijn:**
+  - `build_graph.py` neemt lijnknopen en rijkanten van de hele dag op. De lijnknopen van het venster komen eerst, in dezelfde volgorde; daarna 3.547 nachtlijnknopen. Er komen 3.413 rijkanten bij.
+  - Het dagmodel verandert niet. De interval van een nachtlijnknoop is `inf`, dus zijn instapkant kost 65535 en is dicht. Een rijkant buiten het venster wordt `kind=2` in `graph.bin` en telt alleen mee in het uurmodel.
+  - De rijtijden blijven de kortste uit 07–19 u. Alleen voor nachtsegmenten is het de kortste van de hele dag.
+  - Het uurmodel heeft nu **48 halve uren** (`BIN_MIN = 30`). Het kiest per lijnknoop de drukste corridor over de hele dag, niet alleen over 07–19 u.
+  - `hours.bin.gz`: 81.240 instapkanten × 48, **0,64 MB** (was 0,44). `graph.bin`: 3,00 MB (was 2,91).
+- **Browser:**
+  - `search` slaat in het dagmodel instapkanten met kost 65535 en `kind=2` over.
+  - Het aantal tijdvakken komt uit `meta.hours.bins`.
+  - De zoeklijst met treinstations telt alleen treinen die overdag rijden, zodat Wien Hbf (Nightjet) er niet in komt.
+- **Controle:**
+  - Het dagmodel is gelijk aan vóór de wijziging. Vanaf Utrecht C: 38 / 44 / 129 / 123 / 22 / 117 min, en ook vanaf Ruinen en in de browser ("28.960 haltes binnen 3 uur").
+  - Ook de browsertests van 6.1 en de tijdschuif zijn OK.
+
+| Vanaf Utrecht C (min) | Amsterdam C | Rotterdam C | Groningen | Maastricht |
+|---|---|---|---|---|
+| 23:30 | 41 | 48 | 130 | 133 |
+| 00:00 | 41 | 48 | 130 | 205 |
+| 01:00 | 62 (was 141) | 118 (was 119) | – | – |
+| 03:00 | 93 | 162 | – | – |
+| 04:00 | 111 | 128 | 195 | 232 |
+| 05:30 | 49 | 49 | 149 | 142 |
+
+Rond 4 uur zit er een gat tussen het nachtnet en de eerste treinen. Wie om 4:00 vertrekt, is daardoor later in Amsterdam dan wie om 3:00 vertrekt.
+
+**Blijft open:**
+- de rijtijden per tijdvak;
+- het weekend;
+- de FIFO-eigenschap geldt alleen bij benadering.
 
 ### 6.6 Volgorde
 

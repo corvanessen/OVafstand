@@ -29,7 +29,8 @@ function trainStations(g: Graph): Station[] {
   for (let a = 0; a < g.nArea; a++) {
     for (let e = g.offsets[a]; e < g.offsets[a + 1]; e++) {
       const t = g.target[e];
-      if (t >= g.nArea && g.routes[g.lineRoute[t - g.nArea]][1] === 2) {
+      // instappen in een trein die ook overdag rijdt (65535 = alleen 's nachts, zoals de Nightjet)
+      if (t >= g.nArea && g.cost[e] !== 65535 && g.routes[g.lineRoute[t - g.nArea]][1] === 2) {
         out.push({ name: g.areaNames[a], lat: g.areaLat[a], lon: g.areaLon[a] });
         break;
       }
