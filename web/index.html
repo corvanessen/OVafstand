@@ -46,6 +46,10 @@
               <label><input type="radio" name="model" value="0" /> Ideaal: alleen rijtijd</label>
               <label><input type="radio" name="model" value="0.5" /> Met wachttijd (½ interval per instap)</label>
             </fieldset>
+            <fieldset>
+              <legend>Fietsen</legend>
+              <label><input id="realBike" type="checkbox" /> Over de weg (OpenStreetMap)</label>
+            </fieldset>
             <label class="range">Fietssnelheid <output id="bikeKmhOut"></output>
               <input id="bikeKmh" type="range" min="10" max="25" step="1" />
             </label>
@@ -69,7 +73,7 @@
           <p id="status" class="status">Netwerk laden…</p>
           <footer>
             Dienstregeling van <span id="dataDate">…</span> (werkdag, 07–19 u) · overstappen kost 0 min ·
-            fietsafstand hemelsbreed × 1,3
+            <span id="bikeNote">fietsafstand hemelsbreed × 1,3</span>
           </footer>
         </div>
       </aside>

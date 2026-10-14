@@ -15,10 +15,13 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 // ---------- instellingen ----------
 const params: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180,
+  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true,
 };
+let bikeLoaded = false; // het fietsraster komt na de graaf binnen
 
-function bindRange(id: keyof Params, fmt: (v: number) => string) {
+type NumParam = { [K in keyof Params]: Params[K] extends number ? K : never }[keyof Params];
+
+function bindRange(id: NumParam, fmt: (v: number) => string) {
   const input = $<HTMLInputElement>(id);
   const out = $<HTMLOutputElement>(id + "Out");
   input.value = String(params[id]);
@@ -39,6 +42,13 @@ for (const el of document.querySelectorAll<HTMLInputElement>("input[name=model]"
     scheduleCompute();
   });
 }
+const realBikeBox = $<HTMLInputElement>("realBike");
+realBikeBox.checked = params.realBike;
+realBikeBox.addEventListener("change", () => {
+  params.realBike = realBikeBox.checked;
+  scheduleCompute();
+});
+
 const tMaxSel = $<HTMLSelectElement>("tMaxMin");
 tMaxSel.value = String(params.tMaxMin);
 tMaxSel.addEventListener("change", () => {
@@ -150,12 +160,19 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
     const d = m.date;
     $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
     scheduleCompute();
+  } else if (m.type === "bikeReady") {
+    bikeLoaded = m.ok;
+    realBikeBox.disabled = !m.ok;
+    if (!m.ok) realBikeBox.parentElement!.title = "Fietsraster niet beschikbaar";
+    if (m.ok && params.realBike) scheduleCompute();
   } else if (m.type === "result") {
     busy = false;
     (map.getSource("heat") as ImageSource).updateImage({ image: m.bitmap });
     $("status").textContent =
       `${m.reached.toLocaleString("nl")} haltes binnen ${params.tMaxMin / 60} uur · ` +
-      `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms`;
+      `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms` +
+      (params.realBike && !bikeLoaded ? " · fietsraster laden…" : "");
+    $("bikeNote").textContent = m.bike ? "fietsen over de weg (OpenStreetMap)" : "fietsafstand hemelsbreed × 1,3";
     $("app").classList.remove("loading");
     hasResult = true;
     flushExplain();

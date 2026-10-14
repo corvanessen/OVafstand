@@ -237,7 +237,8 @@ Fase 3, realistisch fietsen:
 - ~~Het fietsraster verbeteren en de rekentijd meten.~~ Klaar (stap 4): 16 richtingen, ±0,5 s voor heel NL.
 - ~~De grootte omlaag brengen en de uitschieters in Utrecht begrijpen.~~ Klaar (stap 5): start in 3 × 3 cellen, 4 bits, ±3–4 MB, fout > 5 min bij <1%.
 - ~~Het fietsraster voor heel NL bouwen.~~ Klaar (stap 6): `bike.bin.gz`, 2,25 MB.
-- **Nu:** het fietsraster inbouwen in de web-app.
+- ~~Het fietsraster inbouwen in de web-app.~~ Klaar (stap 7).
+- **Nu:** het grensextract (strook BE en DE) en fietspontjes controleren.
 - Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
@@ -370,13 +371,41 @@ Het raster is nu in de mediaan 4–7% te lang, zonder correctiefactor. De NL-gro
   - Snoeien haalt 20% van de kanten weg: van 3,33 naar 2,67 mln.
 - **Halteplekken zonder startcel:** 6.286, allemaal in België (Antwerpen, Hasselt, Zonhoven en andere), 0,3–30 km buiten het NL-extract. Dat lost het grensextract op.
 
+### Resultaten fase 3, stap 7: fietsraster in de web-app (14 okt 2026)
+
+- **`web/src/bikegrid.ts`:**
+  - **Laden.** Laadt `bike.bin.gz` en pakt het zelf uit met `DecompressionStream` als de server geen `Content-Encoding` zet.
+  - **Opbouw bij het laden.** De kanten komen in CSR-vorm, beide richtingen, met de lengte in echte meters (`Uint16`). De startcellen per halteplek worden omgezet naar knopen. Het laden kost ±0,4–0,7 s, na de graaf. Tot dan rekent de kaart met kegels.
+  - **Stap 1, vanaf het vertrekpunt.** Dijkstra met een bucketwachtrij (10 s) over het raster, met de fietsgrens vanaf het vertrekpunt. Het vertrekpunt start in de 5 × 5 cellen eromheen, hemelsbreed × 1,3 naar het celmidden. Daaruit volgen de begintijden van de haltes, via hun startcellen. De OV-zoektocht (`search`) krijgt die begintijden nu van buiten.
+  - **Stap 2, vanaf de haltes.** Dijkstra vanaf alle bereikte haltes tegelijk, met de fietsgrens vanaf de halte. Elke cel krijgt de snelste van beide tijden, plus de snapafstand.
+  - **Terugval.** Haltes zonder startcellen (België) tekenen nog een hemelsbrede kegel. Dat geldt ook voor het vertrekpunt buiten het raster.
+  - **Aanvullen.** Cellen zonder weg binnen 250 m krijgen via een afstandstransformatie in twee passes de tijd van de dichtstbijzijnde bereikte cel, tot 750 m. Knopen worden nooit aangevuld, anders ontstaan alsnog sluiproutes over water.
+- **UI:**
+  - een schakelaar "Fietsen: over de weg (OpenStreetMap)", standaard aan;
+  - de voetregel toont welk model actief is.
+- **Rekentijd vanaf Utrecht C**, 3 uur, met wachttijd, in Node: netwerk 70 ms, kaart 387 ms, gelijk aan de kegels (55 / 387 ms).
+  - De eerste versie was 740 ms. De winst kwam van de CSR-kanten, de vooraf omgezette startcellen en een aanvulstap zonder closures.
+  - In headless Chrome (software-rendering, trager) is het raster 340–450 ms, de kegels 260–450 ms.
+- **Reistijden** (raster / kegels, min): Amsterdam C 38 / 34, Rotterdam C 44 / 42, Groningen 129 / 124, Houten 22 / 20. Het raster is wat langer, door echte routes en de ±5% systematische fout uit stap 5.
+- **Gecontroleerd in Chrome:**
+  - de heatmap verschijnt;
+  - de tooltip toont de route;
+  - zoeken naar "Ruinen" werkt;
+  - de schakelaar wisselt het model;
+  - er zijn geen consolefouten (alleen het ontbrekende favicon, dat al zo was).
+- **Visueel bij Goes:** de kegels lopen over de Oosterschelde en de Westerschelde door; het raster volgt het wegennet.
+
+**Bekende beperkingen:**
+- **Over de grens.** Cellen over de grens zijn alleen gekleurd vanuit Belgische haltes (kegels). Vanaf Nederlandse haltes stopt het fietsen aan de grens, tot het grensextract er is.
+- **Fietsgrens.** De fietsgrens geldt per label: de eerste halte die een cel bereikt, bepaalt de gefietste afstand. Dat is een benadering.
+- **Veerponten.** Kleine veerponten zonder GTFS-dienst ontbreken waarschijnlijk in het fietsraster. Dat is nog niet gecontroleerd.
+
 **Volgende stap:**
 1. ~~Het fietsraster voor heel NL bouwen en de echte grootte meten.~~ Klaar (stap 6): 2,25 MB gzip.
-2. Het inbouwen in de web-app:
-   - het bestand laden met `DecompressionStream`;
-   - Dijkstra met een bucketwachtrij in de worker;
-   - tijdens het slepen de kegels, na het loslaten het fietsraster.
-3. Daarna het grensextract met een strook BE en DE.
+2. ~~Het inbouwen in de web-app.~~ Klaar (stap 7).
+3. **Nu:** het grensextract met een strook BE en DE, en controleren of fietspontjes meedoen.
+
+Het plan was om tijdens het slepen de kegels te tonen en na het loslaten het fietsraster. Dat is niet nodig: het raster is even snel als de kegels.
 
 ## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
 

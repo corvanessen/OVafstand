@@ -10,7 +10,7 @@ Fase 0, 1 en 2 zijn klaar. Fase 3 (realistisch fietsen) loopt:
 - de meting van hemelsbreed × 1,3 is klaar;
 - een eigen OSRM-server draait in WSL.
 
-De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en een halte die start in 3 × 3 cellen. Dijkstra met een bucketwachtrij in de browser kost ±0,5 s voor heel NL. In proefregio's wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3. Het raster voor heel NL is gebouwd (`build_bike_grid.py` → `export_bike_grid.py` → `web/public/data/bike.bin.gz`, 2,25 MB). Volgende stap: inbouwen in de web-app (zie het plan).
+De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en een halte die start in 3 × 3 cellen. Dijkstra met een bucketwachtrij in de browser kost ±0,5 s voor heel NL. In proefregio's wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3. Het raster voor heel NL is gebouwd (`build_bike_grid.py` → `export_bike_grid.py` → `web/public/data/bike.bin.gz`, 2,25 MB) en ingebouwd in de web-app (`bikegrid.ts`, standaard aan). Volgende stap: het grensextract (strook BE en DE) en fietspontjes controleren (zie het plan).
 
 **Afspraak:** na elke afgeronde stap de resultaten en de volgende stap bijwerken in ONTWIKKELPLAN.md, en de stand van zaken hier.
 
@@ -45,6 +45,12 @@ De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en
   - De eigen worker van MapLibre moet expliciet via `setWorkerUrl(url)` met `import url from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url"` en `worker.format: "es"` in vite.config. Anders: "Worker failed to load".
 - **TypeScript 7, Vite 8.**
 - Het raster staat in **Web Mercator** (`grid.ts`), zodat het als ImageSource zonder vervorming op de kaart past. `ROW_SCALE` zet per rij mercator-meters om naar echte meters.
+- **Fietsraster (`bikegrid.ts`):**
+  - Laadt `bike.bin.gz` na de graaf; tot dan, of als het ontbreekt, rekent de kaart met kegels (`raster.ts`).
+  - Twee Dijkstra-runs met een bucketwachtrij: vanaf het vertrekpunt (directMaxKm; dat geeft ook de begintijden voor `search`), dan vanaf de bereikte haltes (bikeMaxKm).
+  - Haltes zonder startcellen (België) tekenen nog kegels.
+  - De schakelaar `realBike` zet het uit.
+- **Testen zonder browser-tool:** Chrome headless via CDP (`--remote-debugging-port`) werkt voor de status, de tooltip, zoeken en screenshots. De rekenkern los in Node: bundel met `npx rolldown <test.ts> --platform node` (in `web/`).
 - **Water-masker:** de heatmap-laag ligt vóór de eerste `transportation`-laag, met daarboven een kopie van de `water`-filllagen uit de OpenFreeMap Positron-stijl.
 - **Interactie:**
   - Met de muis: hover toont reistijd en route, klikken zet het vertrekpunt.
@@ -54,7 +60,7 @@ De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en
 ## Verifiëren
 - **Pipeline:** `python pipeline/heatmap.py 52.0894 5.11 "Utrecht Centraal" 0`. De reistijden moeten overeenkomen met de validatie hierboven.
 - **Web:** typecheck, daarna de dev-server. Controleer:
-  - de heatmap verschijnt, en de statusregel toont "netwerk ~50 ms · kaart ~250 ms";
+  - de heatmap verschijnt, en de statusregel toont "netwerk ~50–100 ms · kaart ~250–400 ms", en de voetregel "fietsen over de weg (OpenStreetMap)";
   - de tooltip toont een route;
   - zoeken naar "Ruinen" werkt;
   - geen fouten in de console.
