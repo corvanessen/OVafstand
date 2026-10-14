@@ -11,10 +11,10 @@ pipeline/            Python: GTFS → graaf → binaire bestanden voor de browse
   build_graph.py     statische graaf (model A/A+) → data/day_<datum>/graph.npz
   heatmap.py         prototype: one-to-all + PNG-heatmap (matplotlib)
   export_web.py      graph.npz → web/public/data/{graph.bin, meta.json}
-  osrm_setup.sh      eigen OSRM-fietsserver in WSL (Ubuntu + Docker), localhost:5000
+  osrm_setup.sh      eigen OSRM-fietsserver in WSL (Ubuntu + Docker), localhost:5000; NL plus de strook BE/DE
   build_bike_grid.py fietsraster: wegafstanden per cel naar 16 buren, via OSRM
   export_bike_grid.py  fietsraster → web/public/data/bike.bin.gz
-  bike_check.py, bike_grid_test.py, grid_bench.mjs   metingen uit fase 3
+  bike_check.py, bike_grid_test.py, bike_ferry_check.py, grid_bench.mjs   metingen uit fase 3
 web/                 Vite + TypeScript + MapLibre
   src/router.ts      graph.bin laden, Dijkstra, route-uitleg
   src/bikegrid.ts    bike.bin.gz laden, Dijkstra over het fietsraster
@@ -67,12 +67,13 @@ Waarom geen dienstregelingsalgoritme zoals CSA of RAPTOR? Een statische graaf ge
 
 - Nederland is verdeeld in een raster van **1.147 × 1.380 cellen van ±250 m**. Fietsen gaat met 15 km/u ±250 m per minuut, dus kleinere cellen voegen niets toe.
 - **Fietsraster** ([bikegrid.ts](web/src/bikegrid.ts)), standaard aan:
-  - Offline is met een eigen OSRM-server (fietsprofiel, OpenStreetMap) per cel de wegafstand naar 16 buren berekend. Dat is opgeslagen als 4 bits per kant in `bike.bin.gz` (2,25 MB). Water zonder brug heeft dus geen kant.
+  - Offline is met een eigen OSRM-server (fietsprofiel, OpenStreetMap) per cel de wegafstand naar 16 buren berekend. Dat is opgeslagen als 4 bits per kant in `bike.bin.gz` (4,25 MB). Water zonder brug of pont heeft dus geen kant.
+  - Het OSM-extract is NL plus België, Noordrijn-Westfalen en Nedersaksen binnen het raster, dus het fietsen loopt over de grens door.
   - Per halteplek is de afstand naar de 3 × 3 cellen eromheen bewaard. Daar begint het fietsen vanaf een halte.
   - In de browser loopt Dijkstra met een bucketwachtrij over het raster: eerst vanaf het vertrekpunt (fietsgrens vanaf vertrekpunt), daarna vanaf alle bereikte haltes tegelijk (fietsgrens vanaf halte).
   - Cellen zonder weg binnen 250 m (weiland, water) krijgen de tijd van de dichtstbijzijnde cel, tot 750 m ver.
   - Meting: in Zeeland en Utrecht wijkt het bij <1% van de paren meer dan 5 min af van OSRM, tegen 11% voor hemelsbreed × 1,3 (zie het [plan](ONTWIKKELPLAN.md), fase 3).
-- **Kegels** ([raster.ts](web/src/raster.ts)): met het fietsraster uit, en voor haltes buiten het raster (België), tekent elke bereikte halteplek een "kegel": `T(s) + fietstijd` met hemelsbreed × 1,3, tot maximaal de fietsgrens.
+- **Kegels** ([raster.ts](web/src/raster.ts)): met het fietsraster uit, en voor haltes buiten het raster (West-Vlaanderen, verder Duitsland), tekent elke bereikte halteplek een "kegel": `T(s) + fietstijd` met hemelsbreed × 1,3, tot maximaal de fietsgrens.
 - Elke cel houdt het minimum, en onthoudt welke halte dat minimum leverde.
 - Daarna krijgt elke cel een kleur: een band per 15 minuten.
 
@@ -123,12 +124,12 @@ Kies een dinsdag of woensdag buiten de schoolvakanties, binnen de looptijd van d
 Het fietsraster hangt ook af van de halteplekken. Na een nieuwe GTFS-dag dus ook:
 
 ```bash
-bash pipeline/osrm_setup.sh            # in Ubuntu (WSL); eenmalig, of "start" om alleen de server te starten
+bash pipeline/osrm_setup.sh grens      # in Ubuntu (WSL); eenmalig (±30 min), of "start" om alleen de server te starten
 python pipeline/build_bike_grid.py 20261110
 python pipeline/export_bike_grid.py
 ```
 
-De rijen van het raster staan in `data/bike_grid/nl/` en worden hergebruikt. Daarna zijn alleen de startcellen per halteplek opnieuw nodig (±5 min). Voor nieuwe OSM-data verwijder je `data/bike_grid/nl/`; het hele raster kost dan ±80 min.
+De rijen van het raster staan in `data/bike_grid/grens/` en worden hergebruikt. Daarna zijn alleen de startcellen per halteplek opnieuw nodig (±8 min). Voor nieuwe OSM-data verwijder je `data/bike_grid/grens/`; het hele raster kost dan ±2,5 uur. Loopt OSRM vast (time-outs), dan herstart het script de container zelf.
 
 ## Website
 

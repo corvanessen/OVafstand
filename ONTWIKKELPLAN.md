@@ -238,8 +238,8 @@ Fase 3, realistisch fietsen:
 - ~~De grootte omlaag brengen en de uitschieters in Utrecht begrijpen.~~ Klaar (stap 5): start in 3 × 3 cellen, 4 bits, ±3–4 MB, fout > 5 min bij <1%.
 - ~~Het fietsraster voor heel NL bouwen.~~ Klaar (stap 6): `bike.bin.gz`, 2,25 MB.
 - ~~Het fietsraster inbouwen in de web-app.~~ Klaar (stap 7).
-- **Nu:** het grensextract (strook BE en DE) en fietspontjes controleren.
-- Een extract met een strook België en Duitsland (met `osmium` in Docker), zodat de grens klopt.
+- ~~Het grensextract (strook BE en DE) en fietspontjes controleren.~~ Klaar (stap 8). Daarmee is fase 3 af.
+- **Nu:** fase 6 in de volgorde van 6.6: eerst bezoekers meten (6.2), dan de snelle winst (6.1). Fase 5 (GTFS van BE en DE) kan daarna; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -403,9 +403,45 @@ Het raster is nu in de mediaan 4–7% te lang, zonder correctiefactor. De NL-gro
 **Volgende stap:**
 1. ~~Het fietsraster voor heel NL bouwen en de echte grootte meten.~~ Klaar (stap 6): 2,25 MB gzip.
 2. ~~Het inbouwen in de web-app.~~ Klaar (stap 7).
-3. **Nu:** het grensextract met een strook BE en DE, en controleren of fietspontjes meedoen.
+3. ~~Het grensextract met een strook BE en DE, en controleren of fietspontjes meedoen.~~ Klaar (stap 8).
 
 Het plan was om tijdens het slepen de kegels te tonen en na het loslaten het fietsraster. Dat is niet nodig: het raster is even snel als de kegels.
+
+### Resultaten fase 3, stap 8: grensextract en veerponten (14 okt 2026)
+
+**Grensextract:**
+- `osrm_setup.sh grens` haalt de Geofabrik-extracten van NL, België, Noordrijn-Westfalen en Nedersaksen, knipt ze met `osmium` op de rasterbox (3,2–7,4 O, 50,6–53,7 N) en voegt ze samen tot `grens.osm.pbf`. `osmium` draait in een eigen image (`osmium-tool`, Debian), omdat er geen sudo is.
+  - Downloaden met `curl`: `wget` kon in WSL de naam van Geofabrik niet oplossen (alleen IPv6).
+  - Verwerken met OSRM kost ±25 min. `start` kiest het grensextract als dat er is.
+- **Het raster opnieuw gebouwd** in `data/bike_grid/grens/` → `grens_raw.npz`. De oude NL-versie (`nl/`, `nl_raw.npz`) blijft om te vergelijken.
+  - Netto ±2,3 uur, tegen ±80 min voor NL alleen: de zuidelijke rijen zijn nu overal land (±1,3 min per rij).
+  - Halverwege liep OSRM weer vast (±820% CPU, time-outs), net als in stap 6, maar bij een andere rij. Het lag dus niet aan één blok. `build_bike_grid.py` herstart de container nu zelf bij een time-out (120 s) en wacht tot OSRM weer antwoordt.
+- **Resultaat:**
+  - 979.738 knopen (61,9% van de cellen), tegen 499.066.
+  - Na snoeien 5,43 mln kanten.
+  - Halteplekken zonder startcel: 358, tegen 6.286. Daarvan liggen er 356 buiten de rasterbox (West-Vlaanderen ten westen van 3,2° O, verre Duitse ICE-haltes).
+- **`bike.bin.gz` is nu 4,25 MB** (was 2,25). Een strook van 15 km rond de halteplekken (de maximale fietsgrens vanaf een halte) zou maar 11% van de knopen schelen, want De Lijn dekt heel Vlaanderen. Daarom het volle raster; fase 5 heeft het toch nodig.
+- **Rekentijd** (Node): laden 380 ms (was 210). De kaart kost vanaf Utrecht C 233 ms, vanaf Venlo 103 ms, vanaf Maastricht 68 ms. Dat is gelijk aan het NL-raster, want de fietsgrenzen bepalen hoeveel cellen bereikt worden, niet de grootte van het raster.
+- **Over de grens** (raster, min):
+
+| Van → naar | NL-raster | Grensraster | Kegels |
+|---|---|---|---|
+| Venlo → Straelen (DE) | – | 51 | 57 |
+| Venlo → Lanaken (BE) | 105 | 105 | 104 |
+| Maastricht C → Lanaken (BE) | 26 | 26 | 26 |
+| Utrecht C → Emmerich (DE) | 107 | 108 | 106 |
+
+  Vanaf Utrecht C kleurt het grensraster iets minder cellen (562k tegen 572k), omdat de Belgische haltes nu over de weg fietsen in plaats van met een kegel.
+- **In Chrome** (headless, vanaf Venlo): de heatmap loopt langs de wegen door naar Straelen, Viersen, Brüggen en Belgisch Limburg. De tooltip bij Straelen geeft "Fiets 59 min". De statusregel toont netwerk 46–115 ms en kaart 330–560 ms (software-rendering). De console geeft geen fouten.
+
+**Veerponten** (`pipeline/bike_ferry_check.py`):
+- **Methode.** De ponten komen uit OSM (`osmium tags-filter … w/route=ferry`, `osmium export` naar `data/bike_grid/ferries.geojsonseq`). Per pont zoekt het script de kortste weg door het raster tussen de knopen bij beide aanlegplaatsen, met de ruwe OSRM-afstanden. "Mee" betekent hooguit 1,3 × de pontlengte + 1 km.
+- **Uitkomst.** Van de 578 pontlijnen doen er 525 mee (NL-raster: 527). Het verschil zijn alleen de Borkum-veren, die nu knopen aan Duitse kant hebben.
+- **De ponten die niet meedoen liggen aan OSM, niet aan de pijplijn:**
+  - **Laag water.** Bronkhorsterveer, Dommerholtsveer (Gorssel–Wilp) en Kozakkenveer: sinds 5 aug 2026 staan de aanloopwegen op `access=no` met de notitie "pont vaart niet ivm laag water". Ook de publieke OSRM-server neemt ze niet. Dat herstelt zich bij een OSM-update nadat de notitie weg is; dan het raster opnieuw bouwen.
+  - **Losse aanlegplaats.** Bijvoorbeeld Gorinchem–Woudrichem: het eindpunt in Woudrichem zit alleen aan andere ponten vast, niet aan een weg.
+  - **Grote veerboten** (Waddeneilanden, Zierikzee, Noordzee): die ontbreken deels. Dat geeft niet, want ze zitten in de GTFS en zijn langer dan elke fietsgrens.
+- **Beperking.** OSRM rekent een pont als fietsafstand. De wachttijd en de dienstregeling van kleine ponten (vaak alleen in de zomer) tellen niet mee.
 
 ## Fase 6 in detail: gebruikers en bereik (plan van 12 okt 2026)
 
