@@ -163,6 +163,7 @@ function setOrigin(lat: number, lon: number, name = "") {
   writeHash();
   $("origin").textContent = name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   popup.remove();
+  hideInfo();
   scheduleCompute();
 }
 
@@ -170,6 +171,7 @@ function setOrigin(lat: number, lon: number, name = "") {
 function goTo(lat: number, lon: number, name = "", zoom = 8.5) {
   map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), zoom) });
   setOrigin(lat, lon, name);
+  if (narrow.matches) setSheet("collapsed"); // de kaart is nu het belangrijkst
 }
 
 
@@ -214,6 +216,12 @@ map.on("load", () => {
     if (l.type === "fill" && "source-layer" in l && l["source-layer"] === "water") {
       map.addLayer({ ...(l as LayerSpecification), id: l.id + "-mask" } as LayerSpecification, firstRoad);
     }
+  }
+  // MapLibre toont de bronvermelding eerst uitgeklapt; op een telefoon bedekt die dan een flink stuk kaart
+  // en het midden van de kaart (het vertrekpunt na flyTo) hoort boven de sheet, niet eronder
+  if (narrow.matches) {
+    document.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+    map.setPadding({ top: 0, left: 0, right: 0, bottom: Math.round(window.innerHeight * 0.3) });
   }
   mapReady = true;
   scheduleCompute();
@@ -263,7 +271,10 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
     $("status").textContent = "Fout: " + m.message;
   }
 };
-send({ type: "init", base: new URL("data/", document.baseURI).href });
+// de worker tekent met OffscreenCanvas en pakt het fietsraster uit met DecompressionStream;
+// Safari kan dat pas vanaf iOS 16.4 (de melding staat onderaan dit bestand)
+const supported = typeof OffscreenCanvas !== "undefined" && typeof DecompressionStream !== "undefined";
+if (supported) send({ type: "init", base: new URL("data/", document.baseURI).href });
 
 let timer = 0;
 function scheduleCompute() {
@@ -353,9 +364,12 @@ function onExplain(m: Extract<Response, { type: "explain" }>) {
     btn.onclick = () => {
       setOrigin(lastPopupLngLat[1], lastPopupLngLat[0]);
       track("vertrekpunt-tik");
+      if (narrow.matches) setSheet("collapsed");
     };
     box.append(btn);
-    popup.setLngLat(lastPopupLngLat).setDOMContent(box).addTo(map);
+    // op een smal scherm valt een popup aan de rand buiten beeld: de reisinfo gaat in de sheet
+    if (narrow.matches) showInfo(box, lastPopupLngLat);
+    else popup.setLngLat(lastPopupLngLat).setDOMContent(box).addTo(map);
     explainTarget = null;
   }
 }
@@ -477,12 +491,82 @@ window.addEventListener("hashchange", () => {
   setOrigin(h.origin.lat, h.origin.lon, h.origin.name);
   map.flyTo({ center: [h.origin.lon, h.origin.lat] });
 });
-if (matchMedia("(max-width: 640px)").matches) $("panel").classList.add("collapsed");
 for (const id of ["settings", "about"]) {
   const d = $<HTMLDetailsElement>(id);
   d.addEventListener("toggle", () => d.open && track(id === "about" ? "uitleg-geopend" : "instellingen-geopend"));
 }
-$("panelToggle").addEventListener("click", () => $("panel").classList.toggle("collapsed"));
+
+// ---------- smal scherm: het paneel is een sheet onderaan ----------
+// Drie standen: ingeklapt (vertrekpunt en legenda), half (zoeken, voorbeelden, delen, reisinfo)
+// en vol (ook instellingen en uitleg). De CSS kijkt naar data-sheet, en alleen onder 640 px.
+const panel = $("panel");
+const narrow = matchMedia("(max-width: 640px)");
+type Sheet = "collapsed" | "half" | "full";
+const SHEETS: Sheet[] = ["collapsed", "half", "full"];
+
+function setSheet(s: Sheet) {
+  panel.dataset.sheet = s;
+  if (s !== "full") panel.scrollTop = 0;
+}
+// via een gedeelde link gaat het om de kaart; bij een eerste bezoek om zoeken en de voorbeelden
+setSheet(location.hash ? "collapsed" : "half");
+
+// greep: tikken klapt open of dicht, vegen gaat een stand omhoog of omlaag
+const grip = $("grip");
+let gripY: number | null = null;
+grip.addEventListener("pointerdown", (e) => {
+  gripY = e.clientY;
+  grip.setPointerCapture(e.pointerId);
+});
+grip.addEventListener("pointerup", (e) => {
+  if (gripY === null) return;
+  const dy = e.clientY - gripY;
+  gripY = null;
+  const i = SHEETS.indexOf(panel.dataset.sheet as Sheet);
+  if (Math.abs(dy) < 10) setSheet(i === 0 ? "half" : "collapsed");
+  else setSheet(SHEETS[Math.max(0, Math.min(SHEETS.length - 1, i + (dy < 0 ? 1 : -1)))]);
+});
+grip.addEventListener("pointercancel", () => (gripY = null));
+// geen nagestuurde klik na een tik: na het inklappen ligt de kaart onder de vinger, en die klik
+// zou daar de reisinfo openen (en de sheet weer half openzetten)
+grip.addEventListener("touchend", (e) => e.cancelable && e.preventDefault(), { passive: false });
+grip.addEventListener("click", (e) => {
+  if (e.detail === 0) setSheet(panel.dataset.sheet === "collapsed" ? "half" : "collapsed"); // toetsenbord
+});
+q.addEventListener("focus", () => narrow.matches && setSheet("full")); // ruimte voor de resultaten boven het toetsenbord
+
+// kaartbediening en meldingen blijven boven de sheet
+const setSheetHeight = () =>
+  document.documentElement.style.setProperty("--sheet-h", narrow.matches ? `${panel.offsetHeight}px` : "0px");
+new ResizeObserver(setSheetHeight).observe(panel);
+narrow.addEventListener("change", setSheetHeight);
+
+// reisinfo na een tik (smal scherm): in de sheet, met een markering op de kaart
+const info = $("info");
+const tapEl = document.createElement("div");
+tapEl.className = "tap-marker";
+const tapMarker = new Marker({ element: tapEl });
+
+function showInfo(content: HTMLElement, lngLat: [number, number]) {
+  const close = document.createElement("button");
+  close.className = "close";
+  close.setAttribute("aria-label", "Sluiten");
+  close.textContent = "×";
+  close.onclick = hideInfo;
+  info.replaceChildren(close, content);
+  info.hidden = false;
+  tapMarker.setLngLat(lngLat).addTo(map);
+  setSheet("half");
+}
+function hideInfo() {
+  if (info.hidden) return;
+  info.hidden = true;
+  info.replaceChildren();
+  tapMarker.remove();
+}
+
+if (matchMedia("(pointer: coarse)").matches)
+  $("hint").textContent = "Tik op de kaart voor de reistijd en de route. Sleep de punt om het vertrekpunt te verplaatsen.";
 
 // ---------- voorbeelden, mijn locatie, delen ----------
 const CHIPS: [label: string, lat: number, lon: number, name: string][] = [
@@ -550,3 +634,9 @@ $("share").addEventListener("click", async () => {
     prompt("Kopieer deze link:", url);
   }
 });
+
+if (!supported) {
+  const msg = "Je browser is te oud voor deze kaart. Op een iPhone of iPad is iOS 16.4 of nieuwer nodig.";
+  $("status").textContent = msg;
+  toast(msg, 600000);
+}
