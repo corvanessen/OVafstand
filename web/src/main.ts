@@ -6,7 +6,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import { geocode, type Place } from "./geocode";
 import { CORNERS, cellOf } from "./grid";
 import { BAND_MIN, DIFF_A, DIFF_B, DIFF_EDGES, DIFF_SAME, bandColor } from "./raster";
-import type { Params, Segment } from "./router";
+import type { Day, Params, Segment } from "./router";
 import type { CompareMode, Explained, Request, Response, Source, Station } from "./worker";
 
 setWorkerUrl(maplibreWorkerUrl);
@@ -29,7 +29,7 @@ function track(event: string) {
 // ---------- instellingen ----------
 const DEFAULTS: Params = {
   waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true, departMin: null,
-  bikeStart: true, bikeEnd: false,
+  bikeStart: true, bikeEnd: false, day: "wd",
 };
 const params: Params = { ...DEFAULTS };
 let bikeLoaded = false; // het fietsraster komt na de graaf binnen
@@ -103,6 +103,20 @@ let playTimer = 0;
 const clock = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 const nextMin = (min: number, k = 1) => (min + k * FRAME_STEP_MIN) % 1440;
 
+// ---------- dag: werkdag, zaterdag of zondag (fase 6.7 stap 4) ----------
+const DAY_NAME: Record<Day, string> = { wd: "Werkdag", za: "Zaterdag", zo: "Zondag" };
+const dayDates = new Map<Day, string>(); // de dagen in de data, met hun datum (na "ready")
+for (const btn of $("dayPick").querySelectorAll("button")) {
+  btn.addEventListener("click", () => {
+    const day = btn.dataset.day as Day;
+    if (day === params.day) return;
+    params.day = day;
+    if (day !== "wd") track("dag-weekend");
+    syncTime();
+    settingsChanged();
+  });
+}
+
 timeOn.addEventListener("change", () => {
   params.departMin = timeOn.checked ? +departSlider.value : null;
   if (!timeOn.checked) stopPlaying();
@@ -120,7 +134,7 @@ playBtn.addEventListener("click", () => (playing ? stopPlaying() : startPlaying(
 function setPlaying(on: boolean) {
   playing = on;
   playBtn.textContent = on ? "❚❚" : "▶";
-  playBtn.setAttribute("aria-label", on ? "Pauzeren" : "Werkdag afspelen");
+  playBtn.setAttribute("aria-label", on ? "Pauzeren" : `${DAY_NAME[params.day]} afspelen`);
 }
 function startPlaying() {
   if (params.departMin === null) return;
@@ -185,7 +199,7 @@ let profileKey = "";
 
 /** na elke wijziging: opnieuw beginnen als het vertrekpunt of het fietsen anders is */
 function checkProfile() {
-  const key = JSON.stringify([points(), params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
+  const key = JSON.stringify([points(), params.day, params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
     params.bikeStart, params.bikeEnd, params.realBike && bikeLoaded]);
   if (key !== profileKey) {
     profileKey = key;
@@ -280,7 +294,14 @@ function syncTime() {
   $("departOut").textContent = clock(on ? params.departMin! : +departSlider.value);
   // met een tijdstip telt altijd de echte wachttijd van dat uur
   for (const el of modelRadios) el.disabled = on;
-  $("dataWindow").textContent = on ? `werkdag, vertrek ${clock(params.departMin!)}` : "werkdag, 07–19 u";
+  const day = DAY_NAME[params.day].toLowerCase();
+  $("dataWindow").textContent = on ? `${day}, vertrek ${clock(params.departMin!)}` : `${day}, 07–19 u`;
+  const d = dayDates.get(params.day);
+  if (d) $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
+  for (const btn of $("dayPick").querySelectorAll("button")) {
+    btn.setAttribute("aria-pressed", String(btn.dataset.day === params.day));
+    btn.hidden = dayDates.size > 0 && !dayDates.has(btn.dataset.day as Day);
+  }
   renderChart();
 }
 departSlider.value = String(DEFAULT_DEPART);
@@ -363,7 +384,7 @@ function renderDiffLegend() {
   }
 }
 
-// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&p2=lat,lon,naam&m=diff ----------
+// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&s=1&a=0&dag=za&k=ic&p2=lat,lon,naam&m=diff ----------
 // Alleen afwijkingen van de standaard komen in de link; onbekende of ongeldige waarden worden genegeerd.
 // p2 is punt B bij vergelijken (b is al de fietsgrens), m=diff de stand "Verschil",
 // k=ic de kaart naar het dichtstbijzijnde IC-station (het vertrekpunt blijft erin staan).
@@ -404,13 +425,14 @@ function readHash(): { origin: Origin; b: Origin | null; mode: CompareMode; sour
   const [head, ...rest] = location.hash.slice(1).split("&");
   const origin = parsePoint(head);
   if (!origin) return null;
-  const settings: Record<string, number | boolean> = {};
+  const settings: Record<string, number | boolean | string> = {};
   let b: Origin | null = null;
   let mode: CompareMode = "max";
   let source: Source = "point";
   for (const part of rest) {
     const [k, raw] = part.split("=");
     if (k === "p2" && raw !== undefined) b = parsePoint(raw);
+    if (k === "dag" && (raw === "za" || raw === "zo")) settings.day = raw;
     if (k === "m" && raw === "diff") mode = "diff";
     if (k === "k" && raw === "ic") source = "ic";
     const key = HASH_KEYS[k as keyof typeof HASH_KEYS];
@@ -426,6 +448,7 @@ function writeHash() {
     const v = params[key];
     if (v !== DEFAULTS[key]) h += `&${k}=${typeof v === "boolean" ? +v : v}`;
   }
+  if (params.day !== "wd") h += "&dag=" + params.day;
   if (comparing && pointB) h += "&p2=" + fmtPoint(pointB);
   if (comparing && compareMode === "diff") h += "&m=diff";
   if (source === "ic") h += "&k=ic";
@@ -717,6 +740,9 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
     renderPoints();
     const d = m.date;
     $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
+    for (const day of m.days) dayDates.set(day.key, day.date);
+    if (!dayDates.has(params.day)) params.day = "wd"; // een deellink met een dag die deze data niet heeft
+    syncTime();
     scheduleCompute();
   } else if (m.type === "bikeReady") {
     bikeLoaded = m.ok;

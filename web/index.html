@@ -79,6 +79,12 @@
             <button id="compare" class="small-btn" title="Vergelijk met een tweede vertrekpunt">+ Vergelijk</button>
             <button id="share" class="small-btn" title="Deel een link naar deze kaart, met je instellingen">↗ Delen</button>
           </div>
+          <!-- de dienstregeling van een werkdag, zaterdag of zondag -->
+          <div class="compare-mode day-pick" id="dayPick" role="group" aria-label="Dag">
+            <button data-day="wd">Werkdag</button>
+            <button data-day="za">Zaterdag</button>
+            <button data-day="zo">Zondag</button>
+          </div>
           <div class="time-row" id="timeRow">
             <label class="time-toggle"><input id="timeOn" type="checkbox" /> Vertrek op een tijdstip</label>
             <div class="time-ctl" id="timeCtl" hidden>
@@ -141,13 +147,13 @@
               <b>Optimistisch</b> doet alsof je overstap altijd klaarstaat.</p>
             <p><b>Vertrek op een tijdstip</b> rekent per half uur met de echte vertrekken van die dag, ook de nachtlijnen: de gemiddelde wachttijd
               als je op een willekeurig moment bij de halte komt. Zo zie je hoe de kaart 's avonds en 's nachts krimpt.
-              Met ▶ loopt de klok een werkdag door.</p>
+              Met ▶ loopt de klok de hele dag door. Kies daarboven een werkdag, zaterdag of zondag.</p>
             <p><b>Vergelijk</b> zet een tweede punt B op de kaart. Elke plek krijgt dan de kleur van de langste van de twee reistijden:
               waar is het voor ons allebei dichtbij? Handig als je samen een woonplek zoekt en elk ergens anders werkt.
               Met <b>Verschil</b> zie je wie er sneller is, en hoeveel: bruin is sneller vanaf A, petrol sneller vanaf B.</p>
             <p><b>Naar een IC-station</b> kleurt elke plek naar de reistijd tot het dichtstbijzijnde station waar een Intercity stopt.
               Zo zie je waar Nederland het slechtst bereikbaar is.</p>
-            <p><b>Beperkingen.</b> Zonder tijdstip rekent de kaart met een gewone werkdag overdag (07–19 u). Het weekend zit er niet in.
+            <p><b>Beperkingen.</b> Zonder tijdstip rekent de kaart met het gemiddelde overdag (07–19 u) van de gekozen dag.
               Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
             <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.
               Bezoeken worden geteld met GoatCounter, zonder cookies en zonder je locatie.</p>

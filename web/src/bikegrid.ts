@@ -35,7 +35,8 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   const magic = new TextDecoder().decode(new Uint8Array(buf, 0, 6));
   const nx = dv.getUint16(8, true), ny = dv.getUint16(10, true), nDirs = dv.getUint16(12, true);
   const seedR = dv.getUint16(14, true), nA = dv.getUint32(16, true);
-  if (magic !== "FIETS1" || nx !== NX || ny !== NY || nA !== g.nArea) {
+  // nA < nArea: de graaf heeft er halteplekken bij (weekend); die hebben (nog) geen startcellen en tekenen kegels
+  if (magic !== "FIETS1" || nx !== NX || ny !== NY || nA > g.nArea) {
     console.warn("bike.bin.gz past niet bij dit raster of deze graaf; hemelsbreed model blijft",
       { magic, nx, ny, nA, nArea: g.nArea });
     return null;
@@ -54,7 +55,7 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   p += edges.length;
   const snaps = new Uint8Array(buf, p, Math.ceil(N / 2));
   p += snaps.length;
-  const seeds = new Uint8Array(buf, p, g.nArea * (2 * seedR + 1) ** 2);
+  const seeds = new Uint8Array(buf, p, nA * (2 * seedR + 1) ** 2);
 
   // knopen: cellen met een weg binnen 250 m
   const nibble = (a: Uint8Array, k: number) => (k & 1 ? a[k >> 1] & 15 : a[k >> 1] >> 4);
@@ -107,7 +108,7 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   const w = 2 * seedR + 1, seedK = w * w;
   const seedNode = new Int32Array(g.nArea * seedK).fill(-1);
   const seedDist = new Float32Array(g.nArea * seedK);
-  for (let a = 0; a < g.nArea; a++) {
+  for (let a = 0; a < nA; a++) {
     const c0 = cellOf(g.areaLat[a], g.areaLon[a]);
     if (c0 < 0) continue;
     const oi = c0 % NX, oj = Math.floor(c0 / NX);
@@ -118,6 +119,23 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
         const i = Math.min(NX - 1, Math.max(0, oi + di)), j = Math.min(NY - 1, Math.max(0, oj + dj));
         seedNode[a * seedK + s] = nodeOfCell[j * NX + i];
         seedDist[a * seedK + s] = byte * seedStep;
+      }
+    }
+  }
+  // halteplekken die er in bike.bin.gz nog niet waren (alleen in het weekend): zoals het vertrekpunt,
+  // hemelsbreed × 1,3 naar de middens van de cellen eromheen, plus de snapafstand
+  for (let a = nA; a < g.nArea; a++) {
+    const c0 = cellOf(g.areaLat[a], g.areaLon[a]);
+    if (c0 < 0) continue;
+    const oi = c0 % NX, oj = Math.floor(c0 / NX);
+    for (let dj = -seedR, s = 0; dj <= seedR; dj++) {
+      for (let di = -seedR; di <= seedR; di++, s++) {
+        const i = oi + di, j = oj + dj;
+        const n = i < 0 || j < 0 || i >= NX || j >= NY ? -1 : nodeOfCell[j * NX + i];
+        if (n < 0) continue;
+        const [clat, clon] = cellCenter(i, j);
+        seedNode[a * seedK + s] = n;
+        seedDist[a * seedK + s] = distM(g.areaLat[a], g.areaLon[a], clat, clon) * DETOUR + snapM[n];
       }
     }
   }

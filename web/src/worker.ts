@@ -3,7 +3,7 @@
 import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "./bikegrid";
 import { NX, NY, cellOf } from "./grid";
 import { colorize, colorizeDiff, rasterize, VIA_DIRECT, VIA_NONE, type Raster } from "./raster";
-import { loadGraph, loadHours, pathTo, search, straightAccess, type Graph, type Params, type Search, type Segment } from "./router";
+import { applyDay, loadDay, loadGraph, pathTo, type Day, search, straightAccess, type Graph, type Params, type Search, type Segment } from "./router";
 
 export interface Point {
   lat: number;
@@ -31,7 +31,8 @@ export interface Explained {
 }
 
 export type Response =
-  | { type: "ready"; date: string; nArea: number; ms: number; stations: Station[]; nIc: number }
+  | { type: "ready"; date: string; nArea: number; ms: number; stations: Station[]; nIc: number;
+      days: { key: Day; date: string }[] }
   | { type: "bikeReady"; ok: boolean; ms: number; nNode: number }
   // reached: haltes binnen tMax (bij "max" vanaf allebei); split: bij "diff" de haltes waar A en waar B sneller is
   | { type: "result"; id: number; bitmap: ImageBitmap; msRoute: number; msRaster: number; reached: number;
@@ -149,6 +150,18 @@ function explainRun(g: Graph, { s, r }: Run, c: number): Explained {
   return { minutes, segments: pathTo(g, s, via), lastBike: minutes - s.dist[via] / 60 };
 }
 
+/** De dag van een opdracht laden (werkdag, zaterdag, zondag), met het uurmodel als er een vertrektijd is.
+ *  Past p aan als iets ontbreekt. Daarna meteen applyDay en synchroon rekenen: tussen twee awaits kan
+ *  een andere opdracht een andere dag gekozen hebben. */
+async function prepareDay(g: Graph, p: Params) {
+  let ok = await loadDay(base, g, p.day, p.departMin !== null);
+  if (!ok.day) {
+    p.day = "wd";
+    ok = await loadDay(base, g, "wd", p.departMin !== null);
+  }
+  if (!ok.hours) p.departMin = null;
+}
+
 const post = (msg: Response, transfer: Transferable[] = []) => self.postMessage(msg, { transfer });
 
 self.onmessage = async (ev: MessageEvent<Request>) => {
@@ -158,9 +171,10 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       const t0 = performance.now();
       base = m.base;
       graph = await loadGraph(m.base);
+      applyDay(graph, "wd");
       icAreas = icStations(graph);
       post({ type: "ready", date: graph.date, nArea: graph.nArea, ms: performance.now() - t0,
-        stations: trainStations(graph), nIc: icAreas.length });
+        stations: trainStations(graph), nIc: icAreas.length, days: graph.days.map(({ key, date }) => ({ key, date })) });
       // het fietsraster (±2 MB) komt erna; tot dan rekent de kaart hemelsbreed
       const t1 = performance.now();
       try {
@@ -171,8 +185,9 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       post({ type: "bikeReady", ok: bike !== null, ms: performance.now() - t1, nNode: bike?.nNode ?? 0 });
     } else if (m.type === "compute" && graph) {
       // het uurmodel (±0,6 MB) pas laden als er een vertrektijd gekozen is
-      if (m.params.departMin !== null && !(await loadHours(base, graph))) m.params.departMin = null;
+      await prepareDay(graph, m.params);
       const g = graph;
+      applyDay(g, m.params.day);
       const pts = m.source === "ic" ? [null] : m.b ? [m.a, m.b] : [m.a];
       const runs = pts.map((pt) => cachedRun(g, pt, m.params));
       const t1 = performance.now();
@@ -202,8 +217,10 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
         bike: runs[0].useBike }, [bitmap]);
     } else if (m.type === "profile" && graph) {
       const p = { ...m.params, departMin: m.departMin };
-      if (!(await loadHours(base, graph))) return;
+      await prepareDay(graph, p);
+      if (p.departMin === null) return;
       const g = graph;
+      applyDay(g, p.day);
       const pts = m.source === "ic" ? [null] : m.b ? [m.a, m.b] : [m.a];
       const time = maxTime(pts.map((pt) => run(g, pt, p)));
       let n = 0;

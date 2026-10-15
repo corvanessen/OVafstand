@@ -123,6 +123,7 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
   font: inherit; font-size: 13px; cursor: pointer;
 }
 .map-kind { margin: 0 0 10px; }
+.day-pick { margin-top: 12px; }
 #icNote { margin: -4px 0 10px; }
 .compare-mode button + button { border-left: 1px solid var(--line); }
 .compare-mode button:hover { background: #f6f8fb; }

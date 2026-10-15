@@ -820,7 +820,7 @@ Op branch `fase6-vergelijk`.
 
 ### 6.7 Nieuwe ideeën (15 okt 2026)
 
-Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4. Stap 1, "Verschil", stap 2 en stap 3 (het centrum) zijn klaar; **volgende stap: stap 4** (zaterdag en zondag).
+Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4. Stap 1, "Verschil", stap 2, stap 3 (het centrum) en stap 4 (het weekend) zijn klaar.
 
 1. **Rustiger op de desktop.** Hover toont alleen een klein label met de minuten. Een klik zet de reisinfo vast bovenaan het paneel, met een knop "Vertrek vanaf hier", net als tikken op de telefoon. Het paneel is in te klappen. Klaar, zie hieronder.
 2. **Fiets bij vertrek en bij aankomst als schakelaars.** Niet iedereen heeft aan beide kanten een fiets. Staat een schakelaar uit, dan loop je dat stuk (±5 km/u, kortere grens), over hetzelfde fietsraster met een andere snelheid. Dat is een benadering, want voetpaden waar je niet mag fietsen ontbreken. **Standaard: fiets bij aankomst uit** (keuze van de gebruiker). Dat is realistischer, maar de kaart wordt op het platteland merkbaar donkerder en oude deellinks geven een ander beeld. Nieuwe sleutels in de deellink.
@@ -883,6 +883,31 @@ Op branch `fase6-vergelijk`.
 - **Bugfix.** `.origin-row[hidden]` werd overschreven door `display: flex`; nu geldt `[hidden]` voor beide rijen.
 - **Getest** in headless Chrome: een deellink met `k=ic`, zoeken naar Ruinen, de tijdschuif, "Vertrek vanaf hier", heen en weer wisselen, en klikken in Brabant (Geldrop → Eindhoven C 29 min). Er waren geen consolefouten.
 - **Later (de andere smaken uit het plan):** de reistijd naar een voorziening (ziekenhuis, hoger onderwijs), en het aantal inwoners binnen 45 min (CBS-raster).
+
+### Resultaten fase 6.7, stap 4: zaterdag en zondag (15 okt 2026)
+
+Op branch `fase6-vergelijk`. Dagen: werkdag di 10 nov, za 14 nov en zo 15 nov 2026.
+- **Pijplijn.** `build_graph.py 20261110 20261114 20261115` maakt één graaf voor alle dagen, de eerste is de basis.
+  - Halteplekken, lijnknopen en rijkanten van de werkdag houden hun volgorde; die van het weekend komen erachter. **Met alleen de werkdag zijn `graph.bin`, `meta.json` en het uitgepakte `hours.bin.gz` byte voor byte gelijk aan vroeger.** Zo is de herschrijving gecontroleerd.
+  - Per dag: interval, rijtijd, uurmodel en de soort rijkant. Er is een nieuwe soort **3: rijdt die dag niet**. Zonder die soort zou het uurmodel op zondag een stuk lijn gebruiken dat alleen door de week bestaat, als de lijnknoop die dag wel rijdt maar korter.
+  - `export_web.py` schrijft `day_<datum>.bin.gz` (cost + kind per kant, 0,22 en 0,21 MB) en `hours_<datum>.bin.gz` (0,43 en 0,29 MB). `meta.days` noemt ze. `gzip` met `mtime=0`, zodat dezelfde inhoud dezelfde bytes geeft.
+  - `heatmap.py` (bugfix): lijnen met een oneindig interval (nacht, weekend) en rijkanten buiten het venster tellen niet meer mee. Eerst kon je daar instappen met 30 min wachten, en bij wachtfactor 0 gaf het NaN. De validatie geeft nog steeds 27 / 37 / 111 min.
+
+| | werkdag | zaterdag | zondag |
+|---|---|---|---|
+| ritten | 120.290 | 89.342 | 73.125 |
+| lijnknopen open in 07–19 u | 82.510 | 53.555 | 41.240 |
+| haltes binnen 3 uur vanaf Utrecht C (fiets heen en terug) | 28.960 | 23.042 | 18.277 |
+| idem, vertrek 03:00 | | | 2.291 |
+| Utrecht C → Amersfoort, Zon en Schild | 40 min (Sprinter, +3 wacht) | 38 min (IC, +7) | 38 min (IC, +8) |
+
+- **Weekendhaltes.** Er zijn 459 halteplekken die alleen in het weekend gebruikt worden (453 op zaterdag). `bike.bin.gz` heeft voor hen nog geen startcellen. De browser geeft ze die zoals het vertrekpunt: hemelsbreed × 1,3 naar de 3 × 3 cellen eromheen. Beter is de startcellen opnieuw te berekenen met OSRM (`build_bike_grid.py`, alleen het deel met de startcellen, ±5–8 min).
+- **Browser.**
+  - `Params.day` ("wd", "za", "zo"). De worker laadt een dag pas als hij gekozen wordt (`loadDay`) en zet direct voor het rekenen de arrays van de graaf om (`applyDay`). Tussen twee awaits kan een andere opdracht een andere dag gekozen hebben.
+  - `search` slaat halteplekken over waar die dag geen lijn stopt (`areaUsed`). Zonder dat telde de werkdag 29.220 haltes in plaats van 28.960: weekendhaltes, bereikt via een loopkant. Nu is de werkdag weer gelijk aan vroeger.
+  - Een keuze "Werkdag / Zaterdag / Zondag" boven de tijdregel. Die geldt voor de gewone kaart (gemiddelde overdag) en voor de tijdschuif, het afspelen en het diagram. De voetregel toont de datum en de dag. Deellink `&dag=za` of `&dag=zo`. GoatCounter telt `dag-weekend`.
+  - De IC-stations komen van de werkdag. In het weekend rijdt de Intercity op dezelfde stations.
+- **Getest** in headless Chrome: wisselen tussen de drie dagen, de reisinfo, de tijdschuif op zondag (08:00, 03:00, 12:00), terug naar de werkdag met een tijdstip, en een deellink met `dag=za`. Er waren geen consolefouten.
 
 ### 6.6 Volgorde
 

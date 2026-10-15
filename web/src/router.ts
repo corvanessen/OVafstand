@@ -16,12 +16,33 @@ export interface Graph {
   kind: Uint8Array;
   areaNames: string[];
   routes: Route[];
-  hoursFile: string | null;
   hourBins: number; // tijdvakken per dag in het uurmodel
-  /** uurmodel (na loadHours): wachttijd in minuten per instapkant per tijdvak, 255 = geen vertrek */
+  /** uurmodel van de gekozen dag (na loadDay met uren): wachttijd in minuten per instapkant per tijdvak,
+   *  255 = geen vertrek */
   hours: Uint8Array | null;
-  /** per kant de rij in hours (alleen instapkanten), anders -1 */
-  boardRow: Int32Array | null;
+  /** per kant de rij in hours (alleen instapkanten), anders -1; voor elke dag dezelfde */
+  boardRow: Int32Array;
+  nBoard: number;
+  // fase 6.7 stap 4: cost, kind en hours horen bij één dag; applyDay wisselt ze
+  days: DayInfo[];
+  day: Day;
+  dayData: Map<Day, DayData>;
+  /** halteplekken met een lijn die op de gekozen dag rijdt; de andere slaat search over */
+  areaUsed: Uint8Array;
+}
+
+export type Day = "wd" | "za" | "zo";
+export interface DayInfo {
+  key: Day;
+  date: string;
+  file: string | null; // cost + kind van deze dag; null = de basisdag in graph.bin
+  hours: string | null;
+}
+interface DayData {
+  cost: Uint16Array;
+  kind: Uint8Array;
+  hours: Uint8Array | null;
+  used: Uint8Array | null; // zie Graph.areaUsed; pas berekend bij applyDay
 }
 
 export interface Params {
@@ -35,8 +56,9 @@ export interface Params {
   bikeStart: boolean; // fiets bij vertrek; anders lopen (WALK_KMH, tot WALK_MAX_KM)
   bikeEnd: boolean; // fiets bij aankomst (van de laatste halte naar de bestemming); anders lopen
   // vertrektijd in minuten na middernacht (uurmodel, realistische wachttijd per uur);
-  // null = een gemiddelde werkdag 07–19 u met waitFactor
+  // null = een gemiddelde dag 07–19 u met waitFactor
   departMin: number | null;
+  day: Day; // werkdag, zaterdag of zondag (de worker kiest daarmee de arrays van de graaf)
 }
 
 export const DETOUR = 1.3; // hemelsbreed -> over de weg
@@ -55,6 +77,7 @@ export function legs(p: Params) {
 }
 const KIND_BOARD = 1;
 const KIND_NIGHT = 2; // rijkant die alleen buiten 07–19 u bestaat: alleen in het uurmodel
+const KIND_OFF = 3; // rijkant die op deze dag niet rijdt (bestaat alleen op een andere dag)
 const CLOSED = 65535; // instapkost van een lijnknoop die in 07–19 u niet rijdt
 const NO_SERVICE = 255;
 
@@ -68,23 +91,61 @@ export async function fetchGz(url: string): Promise<ArrayBuffer | null> {
   return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
 }
 
-/** laadt het uurmodel (hours.bin.gz) in g.hours; false als het ontbreekt of niet past */
-export async function loadHours(base: string, g: Graph): Promise<boolean> {
-  if (g.hours) return true;
-  if (!g.hoursFile) return false;
-  const buf = await fetchGz(base + g.hoursFile);
-  if (!buf) return false;
-  const hours = new Uint8Array(buf);
-  const boardRow = new Int32Array(g.kind.length).fill(-1);
-  let n = 0;
-  for (let e = 0; e < g.kind.length; e++) if (g.kind[e] === KIND_BOARD) boardRow[e] = n++;
-  if (hours.length !== n * g.hourBins) {
-    console.warn("hours.bin.gz past niet bij deze graaf", hours.length, n);
-    return false;
+/** Laadt de arrays van een dag (day_<datum>.bin.gz) en, met withHours, het uurmodel van die dag.
+ *  day: false als die dag er niet is (dan blijft de vorige over); hours: false als het uurmodel ontbreekt. */
+export async function loadDay(base: string, g: Graph, key: Day, withHours: boolean): Promise<{ day: boolean; hours: boolean }> {
+  const info = g.days.find((d) => d.key === key);
+  if (!info) return { day: false, hours: false };
+  let d = g.dayData.get(key);
+  if (!d) {
+    const n = g.target.length;
+    const buf = info.file ? await fetchGz(base + info.file) : null;
+    if (!buf || buf.byteLength !== n * 3) {
+      console.warn(`${info.file} ontbreekt of past niet bij deze graaf`);
+      return { day: false, hours: false };
+    }
+    d = { cost: new Uint16Array(buf, 0, n), kind: new Uint8Array(buf, n * 2, n), hours: null, used: null };
+    g.dayData.set(key, d);
   }
-  g.hours = hours;
-  g.boardRow = boardRow;
-  return true;
+  if (withHours && !d.hours && info.hours) {
+    const buf = await fetchGz(base + info.hours);
+    if (buf && buf.byteLength === g.nBoard * g.hourBins) d.hours = new Uint8Array(buf);
+    else console.warn(`${info.hours} ontbreekt of past niet bij deze graaf`);
+  }
+  return { day: true, hours: d.hours !== null };
+}
+
+/** maakt een geladen dag (loadDay) de dag van de graaf */
+export function applyDay(g: Graph, key: Day) {
+  const d = g.dayData.get(key)!;
+  g.cost = d.cost;
+  g.kind = d.kind;
+  g.hours = d.hours;
+  g.day = key;
+  g.areaUsed = d.used ??= areasInUse(g);
+}
+
+/** Halteplekken waar op deze dag een lijn stopt: met een in- of uitstapkant naar een lijnknoop die
+ *  die dag rijdt (een rijkant van soort 0 of 2, erin of eruit). Zonder dit zou je via een loopkant
+ *  een halte bereiken die alleen op een andere dag gebruikt wordt. */
+function areasInUse(g: Graph): Uint8Array {
+  const { nArea, offsets, target, kind } = g;
+  const runs = new Uint8Array(g.nNode);
+  for (let u = nArea; u < g.nNode; u++) {
+    for (let e = offsets[u]; e < offsets[u + 1]; e++) {
+      const v = target[e];
+      if (v >= nArea && (kind[e] === 0 || kind[e] === KIND_NIGHT)) runs[u] = runs[v] = 1;
+    }
+  }
+  const used = new Uint8Array(nArea);
+  for (let u = 0; u < g.nNode; u++) {
+    for (let e = offsets[u]; e < offsets[u + 1]; e++) {
+      const v = target[e];
+      if (u < nArea && v >= nArea && runs[v]) used[u] = 1; // instappen
+      else if (u >= nArea && v < nArea && runs[u]) used[v] = 1; // uitstappen
+    }
+  }
+  return used;
 }
 
 export async function loadGraph(base: string): Promise<Graph> {
@@ -93,6 +154,14 @@ export async function loadGraph(base: string): Promise<Graph> {
     fetch(base + "graph.bin").then((r) => r.arrayBuffer()),
   ]);
   const L = meta.layout as Record<string, [number, number]>;
+  const cost = new Uint16Array(buf, ...L.cost);
+  const kind = new Uint8Array(buf, ...L.kind);
+  // de instapkanten liggen voor elke dag op dezelfde plek
+  const boardRow = new Int32Array(kind.length).fill(-1);
+  let nBoard = 0;
+  for (let e = 0; e < kind.length; e++) if (kind[e] === KIND_BOARD) boardRow[e] = nBoard++;
+  // oudere meta.json zonder days: alleen de werkdag
+  const days: DayInfo[] = meta.days ?? [{ key: "wd", date: meta.date, file: null, hours: meta.hours?.file ?? null }];
   return {
     date: meta.date,
     nArea: meta.nArea,
@@ -102,14 +171,18 @@ export async function loadGraph(base: string): Promise<Graph> {
     offsets: new Uint32Array(buf, ...L.offsets),
     target: new Uint32Array(buf, ...L.target),
     lineRoute: new Uint16Array(buf, ...L.lineRoute),
-    cost: new Uint16Array(buf, ...L.cost),
-    kind: new Uint8Array(buf, ...L.kind),
+    cost,
+    kind,
     areaNames: meta.areaNames,
     routes: meta.routes,
-    hoursFile: meta.hours?.file ?? null,
     hourBins: meta.hours?.bins ?? 24,
     hours: null,
-    boardRow: null,
+    boardRow,
+    nBoard,
+    days,
+    day: "wd",
+    dayData: new Map([["wd", { cost, kind, hours: null, used: null }]]),
+    areaUsed: new Uint8Array(0),
   };
 }
 
@@ -193,8 +266,9 @@ export function search(g: Graph, init: Float64Array, p: Params): Search {
   const waitCap = p.waitCapMin * 60;
   const tMax = p.tMaxMin * 60;
 
+  const used = g.areaUsed;
   for (let a = 0; a < g.nArea; a++) {
-    if (init[a] < tMax) {
+    if (init[a] < tMax && used[a]) {
       dist[a] = init[a];
       pred[a] = -1;
       heap.push(dist[a], a);
@@ -204,7 +278,7 @@ export function search(g: Graph, init: Float64Array, p: Params): Search {
   const { offsets, target, cost, kind } = g;
   // uurmodel: de wachttijd hangt af van de kloktijd bij aankomst op de halte (vertrektijd + label)
   const hours = p.departMin !== null ? g.hours : null;
-  const boardRow = g.boardRow!;
+  const boardRow = g.boardRow;
   const t0 = (p.departMin ?? 0) * 60;
   const bins = g.hourBins;
   while (heap.size > 0) {
@@ -225,10 +299,11 @@ export function search(g: Graph, init: Float64Array, p: Params): Search {
           if (cost[e] === CLOSED) continue; // rijdt niet overdag
           w = Math.min(p.waitFactor * cost[e], waitCap);
         }
-      } else if (k === KIND_NIGHT && !hours) continue;
+      } else if (k === KIND_OFF || (k === KIND_NIGHT && !hours)) continue;
       else w = cost[e];
       const nd = du + w;
       const t = target[e];
+      if (t < g.nArea && !used[t]) continue; // geen lijn op deze dag
       if (nd < dist[t]) {
         dist[t] = nd;
         pred[t] = u;

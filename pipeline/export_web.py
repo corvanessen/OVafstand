@@ -12,17 +12,25 @@ met byte-offsets in meta.json:
   lineRoute  Uint16[nLine]         index in meta.routes, voor lijnknoop nArea + i
   cost       Uint16[nEdge]         seconden; bij instapkanten (kind=1) het interval in seconden
   kind       Uint8[nEdge]          0 = vaste kost, 1 = instappen (kost = min(f * interval, cap)),
-                                   2 = rijden, alleen buiten 07–19 u (nachtlijnen): alleen in het uurmodel
+                                   2 = rijden, alleen buiten 07–19 u (nachtlijnen): alleen in het uurmodel,
+                                   3 = rijden, maar niet op deze dag (een lijn die alleen in het weekend rijdt)
 Een instapkant met kost 65535 rijdt niet in 07–19 u en is dicht in het dagmodel.
 Knopen 0..nArea-1 zijn halteplekken, nArea..nNode-1 zijn lijnknopen (route+richting @ halteplek).
 
 hours.bin.gz (uurmodel, fase 6.4; gzip): Uint8[nBoard × bins], per instapkant (kind=1, in de volgorde
 van graph.bin) de gemiddelde wachttijd in minuten voor elk tijdvak van binMin minuten (meta.hours);
 255 = geen vertrek binnen 254 min. De browser laadt het pas als er een vertrektijd gekozen wordt.
+
+Meerdere dagen (fase 6.7 stap 4; graph.npz van build_graph.py met meerdere datums): graph.bin en
+hours.bin.gz zijn de basisdag (werkdag). Voor elke andere dag (zaterdag, zondag) komen er
+  day_<datum>.bin.gz    gzip van cost Uint16[nEdge] + kind Uint8[nEdge], in de volgorde van graph.bin
+  hours_<datum>.bin.gz  het uurmodel van die dag, zoals hours.bin.gz
+meta.days noemt ze: [{key: "wd" | "za" | "zo", date, file (null voor de basisdag), hours}].
 """
 import gzip
 import json
 import sys
+from datetime import date as Date
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +41,20 @@ DATE = sys.argv[1] if len(sys.argv) > 1 else "20261110"
 D = ROOT / "data" / f"day_{DATE}"
 OUT = ROOT / "web" / "public" / "data"
 
-KIND_FIXED, KIND_BOARD, KIND_NIGHT = 0, 1, 2
+KIND_FIXED, KIND_BOARD, KIND_NIGHT, KIND_OFF = 0, 1, 2, 3
+
+
+def day_key(d: str) -> str:
+    wd = Date(int(d[:4]), int(d[4:6]), int(d[6:])).weekday()
+    return "za" if wd == 5 else "zo" if wd == 6 else "wd"
+
+
+def hours_bytes(line_wait, rows):
+    """uurmodel per instapkant (rows: de lijnknoop van elke instapkant), in minuten, 255 = geen vertrek"""
+    wait_h = line_wait[rows] / 60
+    hours = np.where(np.isfinite(wait_h), np.clip(np.round(wait_h), 0, 255), 255)
+    hours[hours > 254] = 255
+    return hours.astype(np.uint8)
 
 
 def main():
@@ -49,15 +70,27 @@ def main():
     b, a = g["line_board"], g["line_alight"]
     u = np.r_[g["line_area"][b], g["line_node"][a], g["ride_u"], g["walk_u"]]
     v = np.r_[g["line_node"][b], g["line_area"][a], g["ride_v"], g["walk_v"]]
-    cost = np.r_[g["line_headway_comb"][b], np.zeros(a.sum()), g["ride_t"], g["walk_t"]]
-    ride_kind = np.where(g["ride_in_window"], KIND_FIXED, KIND_NIGHT)
-    kind = np.r_[np.full(b.sum(), KIND_BOARD), np.full(a.sum(), KIND_FIXED), ride_kind, np.full(len(g["walk_u"]), KIND_FIXED)]
-    cost = np.clip(np.round(cost), 0, 65535).astype(np.uint16)
     line_row = np.r_[np.nonzero(b)[0], np.full(len(u) - b.sum(), -1)]   # instapkant -> lijnknoop
-
     order = np.argsort(u, kind="stable")
-    u, v, cost, kind = u[order], v[order], cost[order], kind[order].astype(np.uint8)
-    line_row = line_row[order]
+    u, v, line_row = u[order], v[order], line_row[order]
+
+    # per dag cost en kind (een graph.npz van één dag heeft alleen de oude namen)
+    if "dates" in g:
+        dates = [str(d) for d in g["dates"]]
+        per_day = [(g["day_headway_comb"][k], g["day_ride_t"][k], g["day_ride_kind"][k], g["day_line_wait"][k])
+                   for k in range(len(dates))]
+    else:
+        dates = [DATE]
+        per_day = [(g["line_headway_comb"], g["ride_t"],
+                    np.where(g["ride_in_window"], KIND_FIXED, KIND_NIGHT), g["line_wait"])]
+
+    def cost_kind(headway_comb, ride_t, ride_kind):
+        cost = np.r_[headway_comb[b], np.zeros(a.sum()), ride_t, g["walk_t"]]
+        kind = np.r_[np.full(b.sum(), KIND_BOARD), np.full(a.sum(), KIND_FIXED), ride_kind,
+                     np.full(len(g["walk_u"]), KIND_FIXED)]
+        return np.clip(np.round(cost), 0, 65535).astype(np.uint16)[order], kind.astype(np.uint8)[order]
+
+    cost, kind = cost_kind(*per_day[0][:3])
     offsets = np.zeros(n_node + 1, np.uint32)
     np.cumsum(np.bincount(u, minlength=n_node), out=offsets[1:])
 
@@ -93,18 +126,29 @@ def main():
             f.write(arr.tobytes())
             pos += arr.nbytes
 
-    # uurmodel: wachttijd per instapkant per uur, in minuten
-    wait_h = g["line_wait"][line_row[kind == KIND_BOARD]] / 60
-    hours = np.where(np.isfinite(wait_h), np.clip(np.round(wait_h), 0, 255), 255)
-    hours[hours > 254] = 255
-    hours = hours.astype(np.uint8)
-    (OUT / "hours.bin.gz").write_bytes(gzip.compress(hours.tobytes(), 9))
-    print(f"hours.bin.gz: {hours.shape[0]:,} instapkanten × {hours.shape[1]} tijdvakken, {(OUT / 'hours.bin.gz').stat().st_size / 1e6:.2f} MB")
+    # uurmodel: wachttijd per instapkant per uur, in minuten; mtime=0, zodat dezelfde inhoud dezelfde bytes geeft
+    board_rows = line_row[kind == KIND_BOARD]
+    days = []
+    for k, d in enumerate(dates):
+        hours = hours_bytes(per_day[k][3], board_rows)
+        name = "hours.bin.gz" if k == 0 else f"hours_{d}.bin.gz"
+        (OUT / name).write_bytes(gzip.compress(hours.tobytes(), 9, mtime=0))
+        file = None
+        if k > 0:
+            c, kd = cost_kind(*per_day[k][:3])
+            assert ((kd == KIND_BOARD) == (kind == KIND_BOARD)).all()   # dezelfde instapkanten: hours past
+            file = f"day_{d}.bin.gz"
+            (OUT / file).write_bytes(gzip.compress(c.tobytes() + kd.tobytes(), 9, mtime=0))
+            print(f"{file}: {(OUT / file).stat().st_size / 1e6:.2f} MB, "
+                  f"instapkanten open in het dagmodel {((kd == KIND_BOARD) & (c < 65535)).sum():,}")
+        days.append({"key": day_key(d), "date": d, "file": file, "hours": name})
+        print(f"{name}: {hours.shape[0]:,} instapkanten × {hours.shape[1]} tijdvakken, {(OUT / name).stat().st_size / 1e6:.2f} MB")
 
     meta = {
         "date": DATE,
         "hours": {"file": "hours.bin.gz", "nBoard": int(hours.shape[0]), "bins": int(hours.shape[1]),
                   "binMin": int(g["bin_min"])},
+        "days": days,
         "nArea": n_area, "nLine": n_line, "nNode": n_node, "nEdge": int(len(v)),
         "layout": layout,
         "areaNames": [str(s) for s in g["area_name"]],

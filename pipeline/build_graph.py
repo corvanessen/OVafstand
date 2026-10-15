@@ -13,8 +13,14 @@ Het dagmodel (rijtijden, intervallen) komt uit de ritten die in WINDOW beginnen.
 die alleen buiten WINDOW bestaan (nachtlijnen, vroege en late trajecten) zitten er ook in, maar alleen
 voor het uurmodel (fase 6.4): hun interval is inf en ride_in_window is False.
 
-Gebruik:  python pipeline/build_graph.py [YYYYMMDD]
-Schrijft data/day_<datum>/graph.npz
+Meerdere dagen (fase 6.7 stap 4, het weekend): de eerste datum is de basis (een werkdag). De graaf is de
+vereniging van alle dagen. Halteplekken, lijnknopen en rijkanten van de basisdag houden hun volgorde
+(de startcellen in bike.bin.gz horen bij de volgorde van de halteplekken); die van de andere dagen komen
+erachter. Per dag zijn er eigen intervallen, rijtijden, een uurmodel en een soort per rijkant:
+0 = in het venster, 2 = alleen buiten het venster, 3 = rijdt die dag niet.
+
+Gebruik:  python pipeline/build_graph.py [YYYYMMDD ...]     bijv. 20261110 20261114 20261115
+Schrijft data/day_<eerste datum>/graph.npz
 """
 import sys
 from pathlib import Path
@@ -24,14 +30,15 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 ROOT = Path(__file__).resolve().parent.parent
-DATE = sys.argv[1] if len(sys.argv) > 1 else "20261110"
-D = ROOT / "data" / f"day_{DATE}"
+DATES = sys.argv[1:] or ["20261110"]
+D = ROOT / "data" / f"day_{DATES[0]}"
 
 WINDOW = (7 * 3600, 19 * 3600)   # tijdvenster voor rijtijden en intervallen (het dagmodel)
 BIN_MIN = 30                     # uurmodel: tijdvakken van een half uur
 WAIT_WINDOW_MIN = 60             # uurmodel: wachttijd gemiddeld over een uur rond elk tijdvak
 WALK_RADIUS_M = 300
 WALK_SPEED_MS = 5 / 3.6 / 1.2    # 5 km/u met omloopfactor 1.2
+RIDE_WINDOW, RIDE_NIGHT, RIDE_OFF = 0, 2, 3   # soort rijkant per dag (zoals kind in graph.bin)
 
 LAT0 = 52.2
 KX = 111_320 * np.cos(np.radians(LAT0))  # meter per graad lengte
@@ -104,28 +111,11 @@ def bin_waits(pairs_day, serve, g_next):
     return out
 
 
-def main():
-    stops = pd.read_pickle(D / "stops.pkl")
-    routes = pd.read_pickle(D / "routes.pkl")
-    trips = pd.read_pickle(D / "trips.pkl")
-    st = pd.read_pickle(D / "stop_times.pkl")
-
-    # --- halteplekken
-    stops["area"] = stops.parent_station.fillna(stops.stop_id)
-    st = st.merge(stops[["stop_id", "area"]], on="stop_id")
-    used = stops[stops.stop_id.isin(st.stop_id.unique())]
-    areas = (used.groupby("area")
-             .agg(lat=("stop_lat", "mean"), lon=("stop_lon", "mean"), name=("stop_name", "first"))
-             .reset_index())
-    # parent_station heeft vaak een nettere naam
-    parent_names = stops.set_index("stop_id").stop_name
-    areas["name"] = areas.area.map(parent_names).fillna(areas.name)
-    area_idx = pd.Series(np.arange(len(areas)), index=areas.area)
-    n_area = len(areas)
-    print(f"halteplekken: {n_area:,}")
-
-    # --- ritten, gegroepeerd per route+richting; het dagmodel gebruikt de ritten die in het venster beginnen
+def day_model(date, trips, st, stop_area, area_idx):
+    """lijnknopen, rijkanten en corridors van één dag (alles nog als tabellen, zonder knoopnummers)"""
+    trips = trips.copy()
     trips["group"] = trips.route_id + "|" + trips.direction_id.fillna("0")
+    st = st.merge(stop_area, on="stop_id")
     st = st.merge(trips[["trip_id", "group", "route_id"]], on="trip_id")
     st = st.sort_values(["trip_id", "stop_sequence"]).reset_index(drop=True)
     st["a"] = st.area.map(area_idx).to_numpy()
@@ -145,8 +135,7 @@ def main():
     ride = pd.concat([ride, extra], ignore_index=True)
     ride["dt"] = ride.dt.clip(lower=30)  # 0-minuut-segmenten in de data: minimaal 30 s
 
-    # lijnknopen: (group, area) en hun interval; eerst die van het venster, dan die van de rest van de dag
-    hours = (WINDOW[1] - WINDOW[0]) / 3600
+    # lijnknopen: (group, area); eerst die van het venster, dan die van de rest van de dag
     agg = dict(
         n_trips=("trip_id", "nunique"),
         can_board=("pickup_type", lambda s: (s != 1).any()),
@@ -156,30 +145,106 @@ def main():
     serve_all = st_day.groupby(["group", "a"]).agg(**agg).reset_index()
     night = serve_all.merge(serve[["group", "a"]], how="left", indicator=True)
     night = night[night._merge == "left_only"].drop(columns="_merge").assign(n_trips=0)
-    n_day_lines = len(serve)
+    print(f"{date}: {trips.trip_id.nunique():,} ritten, {len(serve):,} lijnknopen in "
+          f"{WINDOW[0] // 3600:02d}–{WINDOW[1] // 3600} u, {len(night):,} alleen daarbuiten")
     serve = pd.concat([serve, night], ignore_index=True)
-    serve["headway_s"] = hours * 3600 / serve.n_trips   # inf buiten het venster: dicht in het dagmodel
     # Gecombineerd interval: wie bij halte a instapt richting volgende halte b, kan elk voertuig
     # nemen dat a->b rijdt (ook van andere routes). Neem per lijnknoop de drukste corridor.
-    g_next = corridors(pairs)
-    n_corr = g_next.groupby(["group", "a0"]).n_corr.max()
-    nc = n_corr.reindex(pd.MultiIndex.from_frame(serve[["group", "a"]])).to_numpy()
-    with np.errstate(divide="ignore"):
-        serve["headway_comb_s"] = hours * 3600 / np.fmax(nc, serve.n_trips.to_numpy())
-    serve["node"] = n_area + np.arange(len(serve))
-    node_of = pd.Series(serve.node.to_numpy(),
-                        index=pd.MultiIndex.from_frame(serve[["group", "a"]]))
-    print(f"lijnknopen: {len(serve):,}, waarvan {len(serve) - n_day_lines:,} alleen buiten {WINDOW[0] // 3600:02d}–{WINDOW[1] // 3600} u "
-          f"({serve.group.nunique():,} route-richtingen)")
+    n_corr = corridors(pairs).groupby(["group", "a0"]).n_corr.max()
+    return dict(date=date, trips=trips, ride=ride, serve=serve, n_corr=n_corr, pairs_day=pairs_day)
 
-    line_wait = bin_waits(pairs_day, serve, corridors(pairs_day))
-    noon, night_bin = 12 * 60 // BIN_MIN, 3 * 60 // BIN_MIN
-    med = lambda col: np.median(col[np.isfinite(col)]) / 60
-    print(f"uurmodel: {line_wait.shape[1]} tijdvakken; mediane wachttijd 12 u {med(line_wait[:, noon]):.1f} min, "
-          f"3 u {med(line_wait[:, night_bin]):.1f} min")
 
-    ride["u"] = node_of.reindex(pd.MultiIndex.from_frame(ride[["group", "a0"]])).to_numpy()
-    ride["v"] = node_of.reindex(pd.MultiIndex.from_frame(ride[["group", "a1"]])).to_numpy()
+def append_new(table, more, key):
+    """rijen van more die nog niet in table staan, achter table"""
+    new = more[key].merge(table[key], how="left", indicator=True)
+    new = new[new._merge == "left_only"][key]
+    return pd.concat([table[key], new], ignore_index=True)
+
+
+def main():
+    stops = pd.read_pickle(D / "stops.pkl")   # stops.txt en routes.txt zijn voor elke dag hetzelfde
+    routes = pd.read_pickle(D / "routes.pkl")
+    days = [(date, pd.read_pickle(ROOT / "data" / f"day_{date}" / "trips.pkl"),
+             pd.read_pickle(ROOT / "data" / f"day_{date}" / "stop_times.pkl")) for date in DATES]
+
+    # --- halteplekken: die van de basisdag eerst, in dezelfde volgorde als met één dag
+    stops["area"] = stops.parent_station.fillna(stops.stop_id)
+    parent_names = stops.set_index("stop_id").stop_name   # parent_station heeft vaak een nettere naam
+
+    def area_table(stop_ids):
+        used = stops[stops.stop_id.isin(stop_ids)]
+        t = (used.groupby("area")
+             .agg(lat=("stop_lat", "mean"), lon=("stop_lon", "mean"), name=("stop_name", "first"))
+             .reset_index())
+        t["name"] = t.area.map(parent_names).fillna(t.name)
+        return t
+
+    areas = area_table(days[0][2].stop_id.unique())
+    for date, _, st in days[1:]:
+        more = area_table(st.stop_id.unique())
+        more = more[~more.area.isin(areas.area)]
+        print(f"{date}: {len(more):,} halteplekken die de basisdag niet heeft")
+        areas = pd.concat([areas, more], ignore_index=True)
+    area_idx = pd.Series(np.arange(len(areas)), index=areas.area)
+    n_area = len(areas)
+    print(f"halteplekken: {n_area:,}")
+
+    stop_area = stops[["stop_id", "area"]]
+    models = [day_model(date, trips, st, stop_area, area_idx) for date, trips, st in days]
+    n_days = len(models)
+    hours = (WINDOW[1] - WINDOW[0]) / 3600
+
+    # --- lijnknopen: de vereniging, die van de basisdag eerst
+    key = ["group", "a"]
+    lines = models[0]["serve"][key].copy()
+    for m in models[1:]:
+        lines = append_new(lines, m["serve"], key)
+    n_line = len(lines)
+    lines["node"] = n_area + np.arange(n_line)
+    idx = pd.MultiIndex.from_frame(lines[key])
+    node_of = pd.Series(lines.node.to_numpy(), index=idx)
+    can_board = np.zeros(n_line, bool)
+    can_alight = np.zeros(n_line, bool)
+    headway = np.full((n_days, n_line), np.inf, np.float32)
+    headway_comb = np.full((n_days, n_line), np.inf, np.float32)
+    line_wait = np.full((n_days, n_line, 24 * 60 // BIN_MIN), np.inf, np.float32)
+    for k, m in enumerate(models):
+        s = m["serve"].set_index(key).reindex(idx)
+        can_board |= s.can_board.astype("boolean").fillna(False).to_numpy(bool)
+        can_alight |= s.can_alight.astype("boolean").fillna(False).to_numpy(bool)
+        n_trips = s.n_trips.fillna(0).to_numpy(float)
+        nc = m["n_corr"].reindex(idx).to_numpy(float)
+        with np.errstate(divide="ignore"):
+            headway[k] = hours * 3600 / n_trips   # inf buiten het venster: dicht in het dagmodel
+            headway_comb[k] = hours * 3600 / np.fmax(nc, n_trips)
+        line_wait[k] = bin_waits(m["pairs_day"], lines, corridors(m["pairs_day"]))
+        med = lambda col: np.median(col[np.isfinite(col)]) / 60
+        print(f"{m['date']}: uurmodel, mediane wachttijd 12 u {med(line_wait[k][:, 12 * 60 // BIN_MIN]):.1f} min, "
+              f"3 u {med(line_wait[k][:, 3 * 60 // BIN_MIN]):.1f} min; "
+              f"{np.isfinite(headway_comb[k]).sum():,} lijnknopen open in het dagmodel")
+    print(f"lijnknopen: {n_line:,} ({lines.group.nunique():,} route-richtingen)")
+
+    # --- rijkanten: de vereniging; per dag de rijtijd en de soort
+    rkey = ["group", "a0", "a1"]
+    rides = models[0]["ride"][rkey]
+    for m in models[1:]:
+        rides = append_new(rides, m["ride"], rkey)
+    ridx = pd.MultiIndex.from_frame(rides)
+    ride_t = np.full((n_days, len(rides)), np.nan, np.float32)
+    ride_kind = np.full((n_days, len(rides)), RIDE_OFF, np.uint8)
+    for k, m in enumerate(models):
+        r = m["ride"].set_index(rkey).reindex(ridx)
+        have = r.dt.notna().to_numpy()
+        ride_t[k] = r.dt.to_numpy(float)
+        ride_kind[k][have] = np.where(r.in_window.to_numpy()[have].astype(bool), RIDE_WINDOW, RIDE_NIGHT)
+    # een dag zonder die rit: de kortste rijtijd van de andere dagen (telt niet mee, soort 3)
+    ride_t = np.where(np.isnan(ride_t), np.nanmin(ride_t, axis=0), ride_t)
+    ride_u = node_of.reindex(pd.MultiIndex.from_frame(rides[["group", "a0"]])).to_numpy()
+    ride_v = node_of.reindex(pd.MultiIndex.from_frame(rides[["group", "a1"]])).to_numpy()
+    for k, m in enumerate(models):
+        n = np.bincount(ride_kind[k], minlength=4)
+        print(f"{m['date']}: rijkanten in het venster {n[RIDE_WINDOW]:,}, daarbuiten {n[RIDE_NIGHT]:,}, "
+              f"niet op deze dag {n[RIDE_OFF]:,}")
 
     # --- loopkanten tussen naburige halteplekken
     xy = to_xy(areas.lat, areas.lon)
@@ -189,29 +254,32 @@ def main():
     walk_u = np.r_[wp[:, 0], wp[:, 1]]
     walk_v = np.r_[wp[:, 1], wp[:, 0]]
     walk_t = np.r_[wd, wd] / WALK_SPEED_MS
-    print(f"loopkanten: {len(walk_u):,}, rijkanten: {len(ride):,}")
+    print(f"loopkanten: {len(walk_u):,}, rijkanten: {len(rides):,}")
 
     # route_type per lijnknoop (voor statistiek / kleur)
-    g_route = trips.drop_duplicates("group").set_index("group").route_id
+    all_trips = pd.concat([m["trips"] for m in models], ignore_index=True)
+    g_route = all_trips.drop_duplicates("group").set_index("group").route_id
     rtype = routes.set_index("route_id").route_type.astype(int)
-    serve["route_type"] = serve.group.map(g_route).map(rtype).fillna(3).astype(np.int8)
+    route_type = lines.group.map(g_route).map(rtype).fillna(3).astype(np.int8)
 
     np.savez_compressed(
         D / "graph.npz",
         n_area=n_area,
         area_id=areas.area.to_numpy(str), area_name=areas.name.to_numpy(str),
         area_lat=areas.lat.to_numpy(), area_lon=areas.lon.to_numpy(),
-        line_node=serve.node.to_numpy(np.int32), line_area=serve.a.to_numpy(np.int32),
-        line_headway=serve.headway_s.to_numpy(np.float32),
-        line_headway_comb=serve.headway_comb_s.to_numpy(np.float32),
-        line_wait=line_wait, bin_min=BIN_MIN,
-        line_board=serve.can_board.to_numpy(bool), line_alight=serve.can_alight.to_numpy(bool),
-        line_route_type=serve.route_type.to_numpy(np.int8),
-        line_group=serve.group.to_numpy(str),
-        ride_u=ride.u.to_numpy(np.int32), ride_v=ride.v.to_numpy(np.int32),
-        ride_t=ride.dt.to_numpy(np.float32), ride_in_window=ride.in_window.to_numpy(bool),
+        line_node=lines.node.to_numpy(np.int32), line_area=lines.a.to_numpy(np.int32),
+        # de basisdag onder de oude namen (heatmap.py en andere metingen)
+        line_headway=headway[0], line_headway_comb=headway_comb[0], line_wait=line_wait[0], bin_min=BIN_MIN,
+        line_board=can_board, line_alight=can_alight,
+        line_route_type=route_type.to_numpy(np.int8),
+        line_group=lines.group.to_numpy(str),
+        ride_u=ride_u.astype(np.int32), ride_v=ride_v.astype(np.int32),
+        ride_t=ride_t[0], ride_in_window=ride_kind[0] == RIDE_WINDOW,
         walk_u=walk_u.astype(np.int32), walk_v=walk_v.astype(np.int32),
         walk_t=walk_t.astype(np.float32),
+        # per dag (fase 6.7 stap 4); index 0 is de basisdag
+        dates=np.array(DATES), day_headway_comb=headway_comb, day_line_wait=line_wait,
+        day_ride_t=ride_t, day_ride_kind=ride_kind,
     )
     print(f"opgeslagen: {D / 'graph.npz'}")
 

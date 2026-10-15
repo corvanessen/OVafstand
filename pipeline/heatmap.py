@@ -40,12 +40,16 @@ def build_matrix(g, wait_factor):
     """Bouw de CSR-matrix; de laatste knoop is de virtuele bron."""
     n_area = int(g["n_area"])
     n = n_area + len(g["line_node"]) + 1
-    wait = np.minimum(wait_factor * g["line_headway_comb"], WAIT_CAP_S)
-    b, a = g["line_board"], g["line_alight"]
-    u = np.r_[g["line_area"][b], g["line_node"][a], g["ride_u"], g["walk_u"]]
-    v = np.r_[g["line_node"][b], g["line_area"][a], g["ride_v"], g["walk_v"]]
+    with np.errstate(invalid="ignore"):   # 0 × inf bij lijnen die niet in 07–19 u rijden; die vallen hieronder af
+        wait = np.minimum(wait_factor * g["line_headway_comb"], WAIT_CAP_S)
+    # lijnen die niet in 07–19 u rijden (interval inf: nachtlijnen, weekendlijnen) en hun rijkanten tellen niet
+    b = g["line_board"] & np.isfinite(g["line_headway_comb"])
+    a = g["line_alight"]
+    r = g["ride_in_window"]
+    u = np.r_[g["line_area"][b], g["line_node"][a], g["ride_u"][r], g["walk_u"]]
+    v = np.r_[g["line_node"][b], g["line_area"][a], g["ride_v"][r], g["walk_v"]]
     # 0-kosten kanten worden door scipy als 'geen kant' gezien: gebruik een epsilon
-    w = np.r_[np.maximum(wait[b], 1e-3), np.full(a.sum(), 1e-3), g["ride_t"], g["walk_t"]]
+    w = np.r_[np.maximum(wait[b], 1e-3), np.full(a.sum(), 1e-3), g["ride_t"][r], g["walk_t"]]
     return u, v, w, n
 
 
