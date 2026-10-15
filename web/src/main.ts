@@ -105,6 +105,8 @@ const clock = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}
 const nextMin = (min: number, k = 1) => (min + k * FRAME_STEP_MIN) % 1440;
 /** kloktijd van seconden na middernacht (ook na 24:00, bij ritten in de nacht) */
 const clockSec = (sec: number) => clock(Math.round(sec / 60) % 1440);
+/** "20261110" -> "10-11-2026" */
+const fmtDate = (d: string) => `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
 /** welk venster de kaart gebruikt: het uurmodel middelt over een uur rond het half uur, de dienstregeling
  *  neemt 12 vertrekken van 15 min ervoor tot 40 min erna (CSA_RUNS in csa.ts) */
 function timeNote(min: number): string {
@@ -288,7 +290,7 @@ function renderChart() {
   chartNow.setAttribute("x2", mx);
   const cur = profile[params.departMin! / FRAME_STEP_MIN];
   chartEl.querySelector("b")!.textContent = Number.isFinite(cur) ? `${Math.round(cur).toLocaleString("nl")} km²` : "…";
-  const done = profile.filter(Number.isFinite).length;
+  const done = profileNext - (profileBusy ? 1 : 0); // op volgorde gevraagd; een mislukte telt ook mee
   chartEl.querySelector(".chart-note")!.textContent = done < n ? `berekenen… ${done}/${n}` : "";
 }
 // klikken of slepen in het diagram kiest de vertrektijd
@@ -324,7 +326,7 @@ function syncTime() {
     ? `${day}, vertrek ${clock(params.departMin!)}, ${params.timetable ? "echte vertrektijden" : "gemiddelde wachttijd"}`
     : `${day}, 07–19 u`;
   const d = dayDates.get(params.day);
-  if (d) $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
+  if (d) $("dataDate").textContent = fmtDate(d);
   for (const btn of $("dayPick").querySelectorAll("button")) {
     btn.setAttribute("aria-pressed", String(btn.dataset.day === params.day));
     btn.hidden = dayDates.size > 0 && !dayDates.has(btn.dataset.day as Day);
@@ -765,8 +767,7 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
     stations = m.stations;
     nIc = m.nIc;
     renderPoints();
-    const d = m.date;
-    $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
+    $("dataDate").textContent = fmtDate(m.date);
     for (const day of m.days) dayDates.set(day.key, day.date);
     if (!dayDates.has(params.day)) params.day = "wd"; // een deellink met een dag die deze data niet heeft
     syncTime();
@@ -799,11 +800,32 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
   } else if (m.type === "explain") {
     onExplain(m);
   } else if (m.type === "error") {
-    busy = false;
-    explainBusy = null;
-    $("status").textContent = "Fout: " + m.message;
+    onError(m);
   }
 };
+/** een mislukt verzoek uit de wachtrij halen, zodat de kaart, het afspelen en het diagram doorlopen */
+function onError(m: Extract<Response, { type: "error" }>) {
+  $("status").textContent = "Fout: " + m.message;
+  const of = m.of;
+  if (of.type === "compute") {
+    const req = requests.get(of.id);
+    requests.delete(of.id);
+    if (req?.kind === "frame") {
+      framesAsked.delete(req.min);
+      stopPlaying(); // dit frame komt niet: niet blijven wachten
+    } else {
+      busy = false;
+      $("app").classList.remove("loading");
+      if (pending) compute();
+    }
+  } else if (of.type === "profile") {
+    onProfile({ type: "profile", gen: of.gen, departMin: of.departMin, km2: NaN });
+  } else if (of.type === "explain") {
+    explainBusy = null;
+    flushExplain();
+  }
+  pumpProfile();
+}
 // de worker tekent met OffscreenCanvas en pakt het fietsraster uit met DecompressionStream;
 // Safari kan dat pas vanaf iOS 16.4 (de melding staat onderaan dit bestand)
 const supported = typeof OffscreenCanvas !== "undefined" && typeof DecompressionStream !== "undefined";

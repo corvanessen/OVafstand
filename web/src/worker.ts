@@ -43,7 +43,13 @@ export type Response =
   // parts: één reis per vertrekpunt (A, en bij vergelijken ook B)
   | { type: "explain"; id: number; parts: Explained[] }
   | { type: "profile"; gen: number; departMin: number; km2: number }
-  | { type: "error"; message: string };
+  // of: het verzoek dat misging (compute: id, profile: gen en departMin), zodat main.ts zijn wachtrij kan bijwerken
+  | { type: "error"; message: string; of: ErrorOf };
+export type ErrorOf =
+  | { type: "init" }
+  | { type: "compute"; id: number }
+  | { type: "profile"; gen: number; departMin: number }
+  | { type: "explain"; id: number };
 
 export interface Station {
   name: string;
@@ -247,7 +253,8 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
     } else if (m.type === "profile" && graph) {
       const p = { ...m.params, departMin: m.departMin };
       const tt = await prepareDay(graph, p);
-      if (p.departMin === null) return;
+      // zonder uurmodel geen vertrektijd: toch antwoorden, anders wacht het diagram voor altijd
+      if (p.departMin === null) return post({ type: "profile", gen: m.gen, departMin: m.departMin, km2: NaN });
       const g = graph;
       applyDay(g, p.day);
       const pts = m.source === "ic" ? [null] : m.b ? [m.a, m.b] : [m.a];
@@ -263,6 +270,8 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       post({ type: "explain", id: m.id, parts });
     }
   } catch (err) {
-    post({ type: "error", message: String(err) });
+    const of: ErrorOf = m.type === "compute" || m.type === "explain" ? { type: m.type, id: m.id }
+      : m.type === "profile" ? { type: "profile", gen: m.gen, departMin: m.departMin } : { type: "init" };
+    post({ type: "error", message: String(err), of });
   }
 };
