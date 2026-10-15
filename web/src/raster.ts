@@ -84,7 +84,46 @@ export function bandColor(b: number, n: number): [number, number, number] {
   return [0, 1, 2].map((k) => Math.round(c0[k] + (c1[k] - c0[k]) * f)) as [number, number, number];
 }
 
-export function colorize(r: Raster, tMaxMin: number): ImageData {
+// Verschil A − B (fase 6.5): tweekleurig, bruin = A sneller, petrol = B sneller (BrBG, kleurenblindveilig).
+// DIFF_EDGES zijn de grenzen in minuten; onder de eerste is het "ongeveer even snel" (grijs).
+export const DIFF_EDGES = [5, 15, 30, 60];
+export const DIFF_A = ["#dfc27d", "#bf812d", "#8c510a", "#543005"]; // A sneller, van weinig naar veel
+export const DIFF_B = ["#80cdc1", "#35978f", "#01665e", "#003c30"];
+export const DIFF_SAME = "#c8c8c8";
+
+/** band voor een verschil d = A − B in minuten: −4..−1 = A sneller, 0 = even snel, 1..4 = B sneller */
+export function diffBand(d: number): number {
+  const a = Math.abs(d);
+  let k = 0;
+  while (k < DIFF_EDGES.length && a >= DIFF_EDGES[k]) k++;
+  return d < 0 ? -k : k;
+}
+
+/** per cel A − B; een punt dat de cel niet binnen tMax haalt, telt als tMax (een ondergrens voor het verschil) */
+export function colorizeDiff(a: Float32Array, b: Float32Array, tMaxMin: number): ImageData {
+  const img = new ImageData(NX, NY);
+  const px = new Uint32Array(img.data.buffer);
+  const pack = (c: string) => {
+    const [R, G, B] = hex(c);
+    return (255 << 24) | (B << 16) | (G << 8) | R;
+  };
+  const n = DIFF_EDGES.length;
+  // index k + n: 0..n−1 = A sneller (sterk naar zwak), n = even snel, n+1..2n = B sneller
+  const packed = [...DIFF_A.slice().reverse(), DIFF_SAME, ...DIFF_B].map(pack);
+  for (let j = 0; j < NY; j++) {
+    const src = j * NX;
+    const dst = (NY - 1 - j) * NX;
+    for (let i = 0; i < NX; i++) {
+      const ta = a[src + i], tb = b[src + i];
+      if (ta >= tMaxMin && tb >= tMaxMin) continue;
+      px[dst + i] = packed[diffBand(Math.min(ta, tMaxMin) - Math.min(tb, tMaxMin)) + n];
+    }
+  }
+  return img;
+}
+
+/** time: minuten per cel (een Raster.time, of bij vergelijken de langste van twee) */
+export function colorize(time: Float32Array, tMaxMin: number): ImageData {
   const n = Math.ceil(tMaxMin / BAND_MIN);
   const lut = Array.from({ length: n }, (_, b) => bandColor(b, n));
   const img = new ImageData(NX, NY);
@@ -94,7 +133,7 @@ export function colorize(r: Raster, tMaxMin: number): ImageData {
     const src = j * NX;
     const dst = (NY - 1 - j) * NX; // afbeelding begint bovenaan (noorden)
     for (let i = 0; i < NX; i++) {
-      const t = r.time[src + i];
+      const t = time[src + i];
       if (t < tMaxMin) px[dst + i] = packed[Math.floor(t / BAND_MIN)];
     }
   }

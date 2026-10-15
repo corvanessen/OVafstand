@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 node_modules/
 web/dist/
+# roborev snapshots
+/.roborev/
