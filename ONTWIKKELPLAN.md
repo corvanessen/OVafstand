@@ -244,7 +244,8 @@ Fase 3, realistisch fietsen:
 - ~~De smartphone (6.3).~~ Klaar in de emulatie, zie "Resultaten fase 6.3". Testen op een echt toestel moet de gebruiker nog doen.
 - ~~6.4 deel 1: het uurmodel en een tijdschuif met afspelen.~~ Klaar, zie "Resultaten fase 6.4, deel 1".
 - ~~Nachtlijnen en halve uren in het uurmodel.~~ Klaar, zie "Resultaten fase 6.4: nachtlijnen en halve uren".
-- **Nu:** 6.4 deel 2: twee frames vooruit rekenen, een overgang tussen de frames, en het diagram met het oppervlak binnen 1 uur. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
+- ~~6.4 deel 2: frames vooruit rekenen, overgang, diagram.~~ Klaar, zie "Resultaten fase 6.4, deel 2".
+- **Nu:** twee vertrekpunten vergelijken (6.5). Eerst de open vraag beantwoorden: welke vergelijking eerst. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -733,6 +734,46 @@ Rond 4 uur zit er een gat tussen het nachtnet en de eerste treinen. Wie om 4:00 
 - de rijtijden per tijdvak;
 - het weekend;
 - de FIFO-eigenschap geldt alleen bij benadering.
+
+### Resultaten fase 6.4, deel 2: vloeiend afspelen en diagram (15 okt 2026)
+
+Ook op branch `fase6-nacht`.
+- **Frames vooruit.**
+  - Tijdens het afspelen vraagt `main.ts` steeds de volgende twee halve uren aan (`AHEAD = 2`). Een frame verschijnt pas als het klaar is en het vorige 700 ms in beeld was.
+  - Elke opdracht aan de worker staat in een tabel als gewone kaart ("view") of als frame (met een generatienummer). Na een wijziging (instelling of vertrekpunt) gelden de frames die al klaarstaan niet meer: ze worden weggegooid (`bitmap.close()`), en het afspelen gaat door met de nieuwe instellingen.
+  - **Gemeten** in headless Chrome vanaf Utrecht C: 12 stappen met tussenpozen van 702–735 ms (eenmaal 881). Zonder vooruitrekenen was dat 700 ms plus de rekentijd.
+- **Overgang.** Er zijn twee `ImageSource`-lagen (`heat0` en `heat1`). Een nieuw beeld komt in de laag die niet in beeld is, en die laag vloeit in 400 ms over de oude heen (0 ms bij een gewone klik).
+  - **Witte flits (gevonden door de gebruiker).** Eerst gingen beide lagen lineair: de oude van 0,72 naar 0, de nieuwe van 0 naar 0,72. Halverwege dekten ze samen maar 1 − 0,64² ≈ 0,59 in plaats van 0,72, en de witte basiskaart scheen door.
+  - **Nu:**
+    - de nieuwe laag ligt boven de oude (`moveLayer`) en gaat van 0 naar 0,72;
+    - de oude volgt `1 − 0,28 / (1 − dekking nieuw)`, zodat de basiskaart steeds voor precies 28% doorschijnt;
+    - `crossfade()` stuurt de dekking zelf, in stappen van 50 ms; de ingebouwde overgang staat uit (standaard 300 ms).
+    - Per beeldje bijwerken maakte het afspelen in headless Chrome onregelmatig (0,7–1,25 s per stap), want elke stap is een volledige repaint. Met stappen van 50 ms is het weer 700–715 ms.
+- **Tooltip.** De worker bewaart de laatste vier resultaten per id. De tooltip vraagt het getoonde resultaat op (`resultId`), niet het laatst berekende. Na elk nieuw beeld wordt hij opnieuw berekend.
+- **Diagram** "Binnen 1 uur bereikbaar":
+  - het oppervlak in km² (cellen van ±250 m) per half uur, onder de schuif, met een lijn voor de huidige tijd;
+  - klikken of slepen kiest de tijd;
+  - de worker rekent het per vertrektijd uit (`profile`, met `tMaxMin = 60`, dus sneller dan een hele kaart), op de achtergrond en één tegelijk, alleen als er geen kaart of frame wacht;
+  - het rekent opnieuw na een ander vertrekpunt of andere fietsinstellingen;
+  - vanaf Utrecht C is het in 2,6 s klaar: 2.977 km² om 8:00, 2.804 km² om 12:00, en laag in de nacht;
+  - op mobiel is het verborgen in de ingeklapte sheet.
+- **Getest:** het diagram (48 punten), het afspelen, klikken in het diagram, de telefoontests van 6.3 en de desktoptests van 6.1. Alles OK, zonder consolefouten.
+
+**Flikkeren bij afspelen (gevonden door de gebruiker).** Het bereik ging per half uur op en neer.
+- **Oorzaak.** Veel lijnen rijden één keer per uur op een vaste minuut. De gemiddelde wachttijd per half uur verschilt dan tussen de eerste en de tweede helft van het uur. Een bus om :20 geeft in het eerste halfuur gemiddeld 25 min wachten, in het tweede 35 min.
+- **Deels echt, deels model.** De richting is echt: wie om 9:00 vertrekt, haalt soms meer dan wie om 9:30 vertrekt. Maar de sterkte hing af van waar de grens van het half uur valt. Een kwartier verschuiven veranderde het effect.
+- **Oplossing.** De wachttijd per tijdvak is nu het gemiddelde over **een uur rond het midden van het tijdvak** (`WAIT_WINDOW_MIN = 60`). De resolutie blijft een half uur. Alleen `hours.bin.gz` veranderde; `graph.bin` en het dagmodel bleven gelijk.
+
+| 07–19 u, per stap van een half uur | Utrecht C | Zwolle | Ruinen |
+|---|---|---|---|
+| cellen die van kleurband wisselen, eerst | 17,2% | 14,8% | 32,5% |
+| idem, met venster van een uur | 5,5% | 4,9% | 11,2% |
+| zaagtand in het diagram, eerst | 1,5% | 3,0% | 0,7% |
+| idem, met venster van een uur | 0,9% | 0,9% | 0,3% |
+
+De zaagtand is de gemiddelde afwijking van een half uur ten opzichte van het gemiddelde van zijn buren, in % van het oppervlak. Vertrek op :00/:30 en op :15/:45 geeft nu vrijwel dezelfde kromme.
+
+**Prijs.** Overgangen worden ±30 min uitgesmeerd. Een voorbeeld vanaf Utrecht C om 00:00: Rotterdam kost nu 99 min, was 48, want het venster valt al deels in het nachtgat. Het precieze minuutverschil per vertrektijd hoort bij fase 4 (een echte dienstregelingsrouter, met de mediaan over meerdere vertrekmomenten per frame).
 
 ### 6.6 Volgorde
 

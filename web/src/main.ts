@@ -74,53 +74,183 @@ const playBtn = $<HTMLButtonElement>("play");
 const DEFAULT_DEPART = 8 * 60;
 const FRAME_STEP_MIN = 30;
 const FRAME_MS = 700; // minimale tijd per stap tijdens afspelen
+const AHEAD = 2; // frames die tijdens afspelen al klaarstaan of onderweg zijn
+const FADE_MS = 400; // overgang tussen twee frames
 let playing = false;
-let frameShownAt = 0;
+let playGen = 0; // na een wijziging tellen frames die nog onderweg zijn niet meer
+const frames = new Map<number, ResultMsg>(); // vertrektijd -> klaar frame
+const framesAsked = new Set<number>();
+let lastFrameAt = 0;
+let playTimer = 0;
 
 const clock = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+const nextMin = (min: number, k = 1) => (min + k * FRAME_STEP_MIN) % 1440;
 
 timeOn.addEventListener("change", () => {
   params.departMin = timeOn.checked ? +departSlider.value : null;
-  if (!timeOn.checked) setPlaying(false);
+  if (!timeOn.checked) stopPlaying();
   syncTime();
   settingsChanged();
 });
 departSlider.addEventListener("input", () => {
-  setPlaying(false);
+  stopPlaying();
   params.departMin = +departSlider.value;
   syncTime();
   settingsChanged();
 });
-playBtn.addEventListener("click", () => {
-  setPlaying(!playing);
-  if (playing) {
-    track("animatie-gestart");
-    nextFrame();
-  }
-});
+playBtn.addEventListener("click", () => (playing ? stopPlaying() : startPlaying()));
 
 function setPlaying(on: boolean) {
   playing = on;
   playBtn.textContent = on ? "❚❚" : "▶";
   playBtn.setAttribute("aria-label", on ? "Pauzeren" : "Werkdag afspelen");
 }
-
-/** een stap verder in de werkdag (na middernacht weer van voren af aan) */
-function nextFrame() {
+function startPlaying() {
+  if (params.departMin === null) return;
+  setPlaying(true);
+  track("animatie-gestart");
+  lastFrameAt = 0;
+  askFrames();
+}
+function stopPlaying() {
+  if (!playing) return;
+  setPlaying(false);
+  clearTimeout(playTimer);
+  dropFrames();
+}
+/** frames met oude instellingen weggooien (na een wijziging, of bij stoppen) */
+function dropFrames() {
+  playGen++;
+  for (const f of frames.values()) f.bitmap.close();
+  frames.clear();
+  framesAsked.clear();
+}
+/** de volgende AHEAD halve uren laten uitrekenen, als dat nog niet gebeurt */
+function askFrames() {
   if (!playing || params.departMin === null) return;
-  params.departMin = (params.departMin + FRAME_STEP_MIN) % 1440;
+  for (let k = 1; k <= AHEAD; k++) {
+    const t = nextMin(params.departMin, k);
+    if (frames.has(t) || framesAsked.has(t)) continue;
+    framesAsked.add(t);
+    requestFrame(t);
+  }
+}
+/** het volgende frame tonen zodra het klaar is en het vorige lang genoeg in beeld was */
+function advance() {
+  clearTimeout(playTimer);
+  if (!playing || params.departMin === null) return;
+  const t = nextMin(params.departMin);
+  const f = frames.get(t);
+  if (!f) return; // nog onderweg: de worker meldt zich
+  const wait = lastFrameAt + FRAME_MS - performance.now();
+  if (wait > 0) {
+    playTimer = window.setTimeout(advance, wait);
+    return;
+  }
+  frames.delete(t);
+  params.departMin = t;
   syncTime();
   writeHash();
-  compute();
+  showResult(f, true);
+  lastFrameAt = performance.now();
+  askFrames();
+  playTimer = window.setTimeout(advance, FRAME_MS);
 }
 
-/** na elk resultaat: tijdens afspelen de volgende stap, maar niet sneller dan FRAME_MS */
-function onFrameShown() {
-  if (!playing) return;
-  const wait = Math.max(0, FRAME_MS - (performance.now() - frameShownAt));
-  frameShownAt = performance.now() + wait;
-  setTimeout(nextFrame, wait);
+// ---------- diagram: oppervlak dat binnen 1 uur bereikbaar is, per half uur ----------
+// Rekent op de achtergrond, één vertrektijd tegelijk, als de worker niets anders te doen heeft.
+const PROFILE_MIN = 60;
+const profile = new Float64Array(1440 / FRAME_STEP_MIN).fill(NaN);
+let profileGen = 0;
+let profileNext = 0;
+let profileBusy = false;
+let profileKey = "";
+
+/** na elke wijziging: opnieuw beginnen als het vertrekpunt of het fietsen anders is */
+function checkProfile() {
+  const key = JSON.stringify([origin.lat, origin.lon, params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
+    params.realBike && bikeLoaded]);
+  if (key !== profileKey) {
+    profileKey = key;
+    profileGen++;
+    profile.fill(NaN);
+    profileNext = 0;
+    profileBusy = false;
+  }
+  renderChart();
+  pumpProfile();
 }
+function pumpProfile() {
+  if (params.departMin === null || profileBusy || profileNext >= profile.length) return;
+  if (!workerReady || busy || framesAsked.size > 0) return; // de kaart en het afspelen gaan voor
+  profileBusy = true;
+  send({ type: "profile", gen: profileGen, departMin: profileNext++ * FRAME_STEP_MIN, lat: origin.lat, lon: origin.lon,
+    params: { ...params, tMaxMin: PROFILE_MIN } });
+}
+function onProfile(m: Extract<Response, { type: "profile" }>) {
+  profileBusy = false;
+  if (m.gen === profileGen) {
+    profile[m.departMin / FRAME_STEP_MIN] = m.km2;
+    renderChart();
+  }
+  pumpProfile();
+}
+
+// één keer opbouwen; daarna alleen bijwerken (anders breekt slepen in het diagram af)
+const CHART_W = 480, CHART_H = 60;
+const chartEl = $("chart");
+chartEl.innerHTML =
+  `<div class="chart-head"><span>Binnen 1 uur bereikbaar</span><b></b></div>` +
+  `<svg viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" aria-hidden="true">` +
+  `<path class="chart-area"/><path class="chart-line"/><line class="chart-now" y1="0" y2="${CHART_H}"/></svg>` +
+  `<div class="chart-axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24 u</span></div>` +
+  `<div class="chart-note"></div>`;
+const chartSvg = chartEl.querySelector("svg")!;
+const [chartArea, chartLine] = chartSvg.querySelectorAll("path");
+const chartNow = chartSvg.querySelector("line")!;
+
+function renderChart() {
+  chartEl.hidden = params.departMin === null;
+  if (chartEl.hidden) return;
+  const n = profile.length;
+  let max = 1;
+  for (const v of profile) if (v > max) max = v;
+  const x = (i: number) => (((i + 0.5) / n) * CHART_W).toFixed(1);
+  const y = (v: number) => (CHART_H - (v / max) * (CHART_H - 4)).toFixed(1);
+  let line = "";
+  let first = -1;
+  let last = -1;
+  for (let i = 0; i < n; i++) {
+    if (!Number.isFinite(profile[i])) continue;
+    line += `${line ? "L" : "M"}${x(i)},${y(profile[i])}`;
+    if (first < 0) first = i;
+    last = i;
+  }
+  chartLine.setAttribute("d", line);
+  chartArea.setAttribute("d", line ? `${line}L${x(last)},${CHART_H}L${x(first)},${CHART_H}Z` : "");
+  const mx = (((params.departMin! + FRAME_STEP_MIN / 2) / 1440) * CHART_W).toFixed(1);
+  chartNow.setAttribute("x1", mx);
+  chartNow.setAttribute("x2", mx);
+  const cur = profile[params.departMin! / FRAME_STEP_MIN];
+  chartEl.querySelector("b")!.textContent = Number.isFinite(cur) ? `${Math.round(cur).toLocaleString("nl")} km²` : "…";
+  const done = profile.filter(Number.isFinite).length;
+  chartEl.querySelector(".chart-note")!.textContent = done < n ? `berekenen… ${done}/${n}` : "";
+}
+// klikken of slepen in het diagram kiest de vertrektijd
+function pickFromChart(e: PointerEvent) {
+  const r = chartSvg.getBoundingClientRect();
+  const i = Math.min(profile.length - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * profile.length)));
+  if (params.departMin === i * FRAME_STEP_MIN) return;
+  stopPlaying();
+  params.departMin = i * FRAME_STEP_MIN;
+  syncTime();
+  settingsChanged();
+}
+chartSvg.addEventListener("pointerdown", (e) => {
+  chartSvg.setPointerCapture(e.pointerId);
+  pickFromChart(e);
+});
+chartSvg.addEventListener("pointermove", (e) => e.buttons && pickFromChart(e));
 
 function syncTime() {
   const on = params.departMin !== null;
@@ -132,6 +262,7 @@ function syncTime() {
   // met een tijdstip telt altijd de echte wachttijd van dat uur
   for (const el of modelRadios) el.disabled = on;
   $("dataWindow").textContent = on ? `werkdag, vertrek ${clock(params.departMin!)}` : "werkdag, 07–19 u";
+  renderChart();
 }
 departSlider.value = String(DEFAULT_DEPART);
 
@@ -151,6 +282,15 @@ function syncControls() {
 function settingsChanged() {
   writeHash();
   scheduleCompute();
+  afterChange();
+}
+/** tijdens afspelen gelden de frames die al klaarstaan niet meer; het diagram misschien ook niet */
+function afterChange() {
+  if (playing) {
+    dropFrames();
+    askFrames();
+  }
+  checkProfile();
 }
 
 function renderLegend() {
@@ -236,6 +376,7 @@ function setOrigin(lat: number, lon: number, name = "") {
   popup.remove();
   hideInfo();
   scheduleCompute();
+  afterChange();
 }
 
 /** naar een plek vliegen en daar vertrekken (zoeken, voorbeelden, mijn locatie) */
@@ -278,11 +419,16 @@ map.on("load", () => {
   // de heatmap komt onder wegen en labels; daarboven een kopie van het water,
   // zodat de fietskegels niet over zee en meren doorlopen
   const firstRoad = layers.find((l) => "source-layer" in l && l["source-layer"] === "transportation")?.id;
-  map.addSource("heat", { type: "image", coordinates: CORNERS });
-  map.addLayer({
-    id: "heat", type: "raster", source: "heat",
-    paint: { "raster-opacity": 0.72, "raster-resampling": "linear", "raster-fade-duration": 0 },
-  }, firstRoad);
+  // twee lagen: een nieuw frame komt in de achterste en vloeit dan over de voorste heen
+  for (const [i, id] of HEAT.entries()) {
+    map.addSource(id, { type: "image", coordinates: CORNERS });
+    map.addLayer({
+      id, type: "raster", source: id,
+      // geen ingebouwde overgang (standaard 300 ms): crossfade() stuurt de dekking zelf
+      paint: { "raster-opacity": i === 0 ? HEAT_OPACITY : 0, "raster-opacity-transition": { duration: 0, delay: 0 },
+        "raster-resampling": "linear", "raster-fade-duration": 0 },
+    }, firstRoad);
+  }
   for (const l of layers) {
     if (l.type === "fill" && "source-layer" in l && l["source-layer"] === "water") {
       map.addLayer({ ...(l as LayerSpecification), id: l.id + "-mask" } as LayerSpecification, firstRoad);
@@ -308,6 +454,60 @@ let computeId = 0;
 let busy = false;
 let pending = false;
 let stations: Station[] = [];
+type ResultMsg = Extract<Response, { type: "result" }>;
+// een berekening is de gewone kaart ("view") of een frame dat tijdens afspelen vooruit wordt gerekend
+const requests = new Map<number, { kind: "view" } | { kind: "frame"; min: number; gen: number }>();
+let shownId = 0; // het resultaat in beeld: daarover gaat de tooltip
+
+const HEAT = ["heat0", "heat1"];
+const HEAT_OPACITY = 0.72;
+let heatFront = 0;
+let fadeRaf = 0;
+const FADE_STEP_MS = 50;
+
+/** Overgang van de oude naar de nieuwe heatmaplaag. De nieuwe ligt erboven en gaat van 0 naar
+ *  HEAT_OPACITY; de oude zakt zo dat de basiskaart steeds voor precies 1 − HEAT_OPACITY doorschijnt.
+ *  Zakten beide lineair, dan schemerde halverwege de basiskaart door (een witte flits). */
+function crossfade(oldId: string, newId: string, fade: boolean) {
+  map.moveLayer(oldId, newId); // de oude laag onder de nieuwe
+  cancelAnimationFrame(fadeRaf);
+  const set = (t: number) => {
+    const top = HEAT_OPACITY * t;
+    map.setPaintProperty(newId, "raster-opacity", top);
+    map.setPaintProperty(oldId, "raster-opacity", t >= 1 ? 0 : 1 - (1 - HEAT_OPACITY) / (1 - top));
+  };
+  if (!fade) return set(1);
+  // in stappen van ±50 ms: vloeiend genoeg, en elke stap kost een volledige repaint van de kaart
+  const t0 = performance.now();
+  let last = t0;
+  const step = (now: number) => {
+    const t = Math.min(1, (now - t0) / FADE_MS);
+    if (t >= 1 || now - last >= FADE_STEP_MS) {
+      set(t);
+      last = now;
+    }
+    if (t < 1) fadeRaf = requestAnimationFrame(step);
+  };
+  set(0);
+  fadeRaf = requestAnimationFrame(step);
+}
+
+/** een resultaat in beeld brengen; tijdens afspelen met een overgang */
+function showResult(m: ResultMsg, fade: boolean) {
+  const back = 1 - heatFront;
+  (map.getSource(HEAT[back]) as ImageSource).updateImage({ image: m.bitmap });
+  crossfade(HEAT[heatFront], HEAT[back], fade);
+  heatFront = back;
+  shownId = m.id;
+  $("status").textContent =
+    `${m.reached.toLocaleString("nl")} haltes binnen ${params.tMaxMin / 60} uur · ` +
+    `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms` +
+    (params.realBike && !bikeLoaded ? " · fietsraster laden…" : "");
+  $("bikeNote").textContent = m.bike ? "fietsen over de weg (OpenStreetMap)" : "fietsafstand hemelsbreed × 1,3";
+  hasResult = true;
+  explainSent = null; // het beeld is anders: de tooltip opnieuw laten uitrekenen
+  flushExplain();
+}
 
 worker.onmessage = (ev: MessageEvent<Response>) => {
   const m = ev.data;
@@ -322,19 +522,26 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
     realBikeBox.disabled = !m.ok;
     if (!m.ok) realBikeBox.parentElement!.title = "Fietsraster niet beschikbaar";
     if (m.ok && params.realBike) scheduleCompute();
+    checkProfile();
   } else if (m.type === "result") {
-    busy = false;
-    (map.getSource("heat") as ImageSource).updateImage({ image: m.bitmap });
-    $("status").textContent =
-      `${m.reached.toLocaleString("nl")} haltes binnen ${params.tMaxMin / 60} uur · ` +
-      `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms` +
-      (params.realBike && !bikeLoaded ? " · fietsraster laden…" : "");
-    $("bikeNote").textContent = m.bike ? "fietsen over de weg (OpenStreetMap)" : "fietsafstand hemelsbreed × 1,3";
-    $("app").classList.remove("loading");
-    hasResult = true;
-    flushExplain();
-    if (pending) compute();
-    else onFrameShown();
+    const req = requests.get(m.id);
+    requests.delete(m.id);
+    if (req?.kind === "frame") {
+      framesAsked.delete(req.min);
+      if (req.gen !== playGen || !playing) m.bitmap.close();
+      else {
+        frames.set(req.min, m);
+        advance();
+      }
+    } else {
+      busy = false;
+      showResult(m, false);
+      $("app").classList.remove("loading");
+      if (pending) compute();
+    }
+    pumpProfile();
+  } else if (m.type === "profile") {
+    onProfile(m);
   } else if (m.type === "explain") {
     onExplain(m);
   } else if (m.type === "error") {
@@ -362,7 +569,15 @@ function compute() {
   busy = true;
   pending = false;
   $("app").classList.add("loading");
-  send({ type: "compute", id: ++computeId, lat: origin.lat, lon: origin.lon, params: { ...params } });
+  const id = ++computeId;
+  requests.set(id, { kind: "view" });
+  send({ type: "compute", id, lat: origin.lat, lon: origin.lon, params: { ...params } });
+}
+/** een frame voor het afspelen: dezelfde instellingen, een andere vertrektijd */
+function requestFrame(min: number) {
+  const id = ++computeId;
+  requests.set(id, { kind: "frame", min, gen: playGen });
+  send({ type: "compute", id, lat: origin.lat, lon: origin.lon, params: { ...params, departMin: min } });
 }
 
 // ---------- reistijd onder de muis / bij tikken ----------
@@ -384,7 +599,7 @@ function flushExplain() {
   if (explainBusy || !hasResult || !explainTarget || explainTarget === explainSent) return;
   explainBusy = true;
   explainSent = explainTarget;
-  send({ type: "explain", id: ++explainId, lat: explainTarget.lat, lon: explainTarget.lon });
+  send({ type: "explain", id: ++explainId, resultId: shownId, lat: explainTarget.lat, lon: explainTarget.lon });
 }
 
 const MODE: Record<number, string> = { 0: "Tram", 1: "Metro", 2: "Trein", 3: "Bus", 4: "Veerboot", 7: "Kabelbaan" };

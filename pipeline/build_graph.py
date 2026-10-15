@@ -29,6 +29,7 @@ D = ROOT / "data" / f"day_{DATE}"
 
 WINDOW = (7 * 3600, 19 * 3600)   # tijdvenster voor rijtijden en intervallen (het dagmodel)
 BIN_MIN = 30                     # uurmodel: tijdvakken van een half uur
+WAIT_WINDOW_MIN = 60             # uurmodel: wachttijd gemiddeld over een uur rond elk tijdvak
 WALK_RADIUS_M = 300
 WALK_SPEED_MS = 5 / 3.6 / 1.2    # 5 km/u met omloopfactor 1.2
 
@@ -66,11 +67,17 @@ def corridors(pairs):
 def bin_waits(pairs_day, serve, g_next):
     """Uurmodel (fase 6.4): gemiddelde wachttijd (s) per lijnknoop en per tijdvak van BIN_MIN minuten.
 
-    Voor iemand die op een willekeurig moment in dat tijdvak bij de halte komt, tot het eerstvolgende
-    vertrek in de drukste corridor van de lijnknoop (alle ritten naar dezelfde volgende halte, ook van
-    andere routes; zoals headway_comb_s, maar over de hele dag geteld). Bij een regelmatige dienst is
-    dat ½ interval; gaten (avond, nacht) tellen vanzelf mee. Tijden na middernacht (≥ 24:00) gelden
-    als de nacht van deze dag; na het laatste vertrek volgt het eerste van de volgende dag.
+    Voor iemand die op een willekeurig moment binnen WAIT_WINDOW_MIN rond het midden van het tijdvak
+    bij de halte komt, tot het eerstvolgende vertrek in de drukste corridor van de lijnknoop (alle ritten
+    naar dezelfde volgende halte, ook van andere routes; zoals headway_comb_s, maar over de hele dag
+    geteld). Bij een regelmatige dienst is dat ½ interval; gaten (avond, nacht) tellen vanzelf mee.
+    Tijden na middernacht (≥ 24:00) gelden als de nacht van deze dag; na het laatste vertrek volgt het
+    eerste van de volgende dag.
+
+    Waarom een venster van een uur bij tijdvakken van een half uur: veel lijnen rijden één keer per uur
+    op een vaste minuut. Gemiddeld per half uur verschilt de wachttijd dan tussen de eerste en de tweede
+    helft van het uur, en de kaart flikkerde bij afspelen (15–33% van de cellen wisselde per stap van
+    kleur, ook overdag). Over een uur middelt die fase weg; de resolutie blijft een half uur.
     """
     p = pairs_day[pairs_day.board]
     dep = p.dep % 86400
@@ -81,6 +88,9 @@ def bin_waits(pairs_day, serve, g_next):
 
     n_bins = 24 * 60 // BIN_MIN
     t = np.arange(24 * 60) * 60 + 30.0   # het midden van elke minuut
+    # per tijdvak de minuten van een venster rond het midden (rond middernacht doorlopend)
+    start = np.arange(n_bins) * BIN_MIN + (BIN_MIN - WAIT_WINDOW_MIN) // 2
+    window = (start[:, None] + np.arange(WAIT_WINDOW_MIN)) % (24 * 60)
     out = np.full((len(serve), n_bins), np.inf, np.float32)
     for i, (g, a) in enumerate(zip(serve.group, serve.a)):
         a1 = best.get((g, a))
@@ -90,7 +100,7 @@ def bin_waits(pairs_day, serve, g_next):
         if deps is None or len(deps) == 0:
             continue
         d = np.r_[deps, deps[0] + 86400]
-        out[i] = (d[np.searchsorted(d, t)] - t).reshape(n_bins, BIN_MIN).mean(1)
+        out[i] = (d[np.searchsorted(d, t)] - t)[window].mean(1)
     return out
 
 

@@ -102,6 +102,18 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 }
 .clock { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
 
+/* diagram: bereikbaar oppervlak binnen 1 uur per half uur; klikken of slepen kiest de tijd */
+.chart { margin-top: 8px; }
+.chart[hidden] { display: none; }
+.chart-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.chart-head b { color: var(--fg); font-variant-numeric: tabular-nums; }
+.chart svg { display: block; width: 100%; height: 56px; margin-top: 2px; cursor: pointer; touch-action: none; }
+.chart-area { fill: rgba(27, 77, 216, 0.14); }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.chart-now { stroke: var(--fg); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.chart-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+.chart-note { font-size: 11px; color: var(--muted); }
+
 #about p { margin: 0 0 8px; line-height: 1.45; }
 #about .credits { color: var(--muted); font-size: 12px; }
 #about + .status { margin-top: 10px; }
@@ -215,7 +227,7 @@ ol.legs li.t4 { border-color: #00a3c4; }   /* veer */
   /* ingeklapt: alleen het vertrekpunt en de legenda */
   #panel[data-sheet="collapsed"] header,
   #panel[data-sheet="collapsed"] .body > :not(.origin-row):not(.legend-wrap):not(.time-row.active) { display: none; }
-  #panel[data-sheet="collapsed"] .time-toggle { display: none; }
+  #panel[data-sheet="collapsed"] :is(.time-toggle, .chart) { display: none; }
   .play-btn { width: 44px; height: 44px; }
   .time-toggle { min-height: 44px; }
   #panel[data-sheet="collapsed"] .origin-row { margin-top: 0; }
