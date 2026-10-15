@@ -359,10 +359,12 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
 };
 /** een mislukt verzoek uit de wachtrij halen, zodat de kaart, het afspelen en het diagram doorlopen */
 function onError(m: Extract<Response, { type: "error" }>) {
-  $("status").textContent = "Fout: " + m.message;
   const of = m.of;
+  // de statusregel gaat over de kaart; een fout op de achtergrond (diagram, reisinfo) alleen in de console
+  const req = of.type === "compute" ? requests.get(of.id) : undefined;
+  if (of.type === "init" || (of.type === "compute" && req?.kind !== "frame")) $("status").textContent = "Fout: " + m.message;
+  else console.warn(`worker (${of.type}):`, m.message);
   if (of.type === "compute") {
-    const req = requests.get(of.id);
     requests.delete(of.id);
     if (req?.kind === "frame") frameFailed(req.min);
     else {

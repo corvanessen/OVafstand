@@ -26,7 +26,6 @@ export function initPlayback(d: typeof deps) {
 }
 
 const nextMin = (min: number, k = 1) => (min + k * STEP_MIN) % 1440;
-export const isPlaying = () => playing;
 /** frames onderweg: dan wacht het diagram */
 export const framesPending = () => framesAsked.size > 0;
 

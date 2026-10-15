@@ -9,7 +9,8 @@ const PROFILE_MIN = 60;
 const profile = new Float64Array(1440 / STEP_MIN).fill(NaN);
 let profileGen = 0;
 let profileNext = 0;
-let profileBusy = false;
+let profileBusy = false; // er is een verzoek onderweg (ook een van een oudere ronde)
+let profileDone = 0; // antwoorden van deze ronde, ook mislukte
 let profileKey = "";
 
 let deps: {
@@ -30,7 +31,9 @@ export function checkProfile() {
     profileGen++;
     profile.fill(NaN);
     profileNext = 0;
-    profileBusy = false;
+    profileDone = 0;
+    // profileBusy blijft staan: het oude antwoord komt nog, en daarna begint de nieuwe ronde.
+    // Zo loopt er nooit meer dan één verzoek tegelijk.
   }
   renderChart();
   pumpProfile();
@@ -46,6 +49,7 @@ export function onProfile(m: Extract<Response, { type: "profile" }>) {
   profileBusy = false;
   if (m.gen === profileGen) {
     profile[m.departMin / STEP_MIN] = m.km2;
+    profileDone++;
     renderChart();
   }
   pumpProfile();
@@ -90,8 +94,7 @@ export function renderChart() {
   chartNow.setAttribute("x2", mx);
   const cur = profile[params.departMin! / STEP_MIN];
   chartEl.querySelector("b")!.textContent = Number.isFinite(cur) ? `${Math.round(cur).toLocaleString("nl")} km²` : "…";
-  const done = profileNext - (profileBusy ? 1 : 0); // op volgorde gevraagd; een mislukte telt ook mee
-  chartEl.querySelector(".chart-note")!.textContent = done < n ? `berekenen… ${done}/${n}` : "";
+  chartEl.querySelector(".chart-note")!.textContent = profileDone < n ? `berekenen… ${profileDone}/${n}` : "";
 }
 
 function pickFromChart(e: PointerEvent) {

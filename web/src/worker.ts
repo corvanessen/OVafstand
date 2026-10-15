@@ -161,9 +161,12 @@ function explainRun(g: Graph, { s, r, csa }: Run, c: number): Explained {
   // de scan gebruikt de halteplekken van de dag van dit resultaat, ook als intussen een andere dag gekozen is
   const now = g.day;
   applyDay(g, csa.day);
-  const { segments, t0 } = csaPath(g, csa.tt, walks!, csa.run, via);
-  applyDay(g, now);
-  return { minutes, segments, lastBike, leave: t0 };
+  try {
+    const { segments, t0 } = csaPath(g, csa.tt, walks!, csa.run, via);
+    return { minutes, segments, lastBike, leave: t0 };
+  } finally {
+    applyDay(g, now);
+  }
 }
 
 /** De dag van een opdracht laden (werkdag, zaterdag, zondag), met het uurmodel als er een vertrektijd is,
