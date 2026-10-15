@@ -11,12 +11,14 @@ met byte-offsets in meta.json:
   target     Uint32[nEdge]
   lineRoute  Uint16[nLine]         index in meta.routes, voor lijnknoop nArea + i
   cost       Uint16[nEdge]         seconden; bij instapkanten (kind=1) het interval in seconden
-  kind       Uint8[nEdge]          0 = vaste kost, 1 = instappen (kost = min(f * interval, cap))
+  kind       Uint8[nEdge]          0 = vaste kost, 1 = instappen (kost = min(f * interval, cap)),
+                                   2 = rijden, alleen buiten 07–19 u (nachtlijnen): alleen in het uurmodel
+Een instapkant met kost 65535 rijdt niet in 07–19 u en is dicht in het dagmodel.
 Knopen 0..nArea-1 zijn halteplekken, nArea..nNode-1 zijn lijnknopen (route+richting @ halteplek).
 
-hours.bin.gz (uurmodel, fase 6.4; gzip): Uint8[nBoard × 24], per instapkant (kind=1, in de volgorde
-van graph.bin) de gemiddelde wachttijd in minuten voor elk uur van de dag; 255 = geen vertrek binnen
-254 min. De browser laadt het pas als er een vertrektijd gekozen wordt.
+hours.bin.gz (uurmodel, fase 6.4; gzip): Uint8[nBoard × bins], per instapkant (kind=1, in de volgorde
+van graph.bin) de gemiddelde wachttijd in minuten voor elk tijdvak van binMin minuten (meta.hours);
+255 = geen vertrek binnen 254 min. De browser laadt het pas als er een vertrektijd gekozen wordt.
 """
 import gzip
 import json
@@ -31,7 +33,7 @@ DATE = sys.argv[1] if len(sys.argv) > 1 else "20261110"
 D = ROOT / "data" / f"day_{DATE}"
 OUT = ROOT / "web" / "public" / "data"
 
-KIND_FIXED, KIND_BOARD = 0, 1
+KIND_FIXED, KIND_BOARD, KIND_NIGHT = 0, 1, 2
 
 
 def main():
@@ -48,7 +50,8 @@ def main():
     u = np.r_[g["line_area"][b], g["line_node"][a], g["ride_u"], g["walk_u"]]
     v = np.r_[g["line_node"][b], g["line_area"][a], g["ride_v"], g["walk_v"]]
     cost = np.r_[g["line_headway_comb"][b], np.zeros(a.sum()), g["ride_t"], g["walk_t"]]
-    kind = np.r_[np.full(b.sum(), KIND_BOARD), np.full(a.sum() + len(g["ride_u"]) + len(g["walk_u"]), KIND_FIXED)]
+    ride_kind = np.where(g["ride_in_window"], KIND_FIXED, KIND_NIGHT)
+    kind = np.r_[np.full(b.sum(), KIND_BOARD), np.full(a.sum(), KIND_FIXED), ride_kind, np.full(len(g["walk_u"]), KIND_FIXED)]
     cost = np.clip(np.round(cost), 0, 65535).astype(np.uint16)
     line_row = np.r_[np.nonzero(b)[0], np.full(len(u) - b.sum(), -1)]   # instapkant -> lijnknoop
 
@@ -91,16 +94,17 @@ def main():
             pos += arr.nbytes
 
     # uurmodel: wachttijd per instapkant per uur, in minuten
-    wait_h = g["line_wait_h"][line_row[kind == KIND_BOARD]] / 60
+    wait_h = g["line_wait"][line_row[kind == KIND_BOARD]] / 60
     hours = np.where(np.isfinite(wait_h), np.clip(np.round(wait_h), 0, 255), 255)
     hours[hours > 254] = 255
     hours = hours.astype(np.uint8)
     (OUT / "hours.bin.gz").write_bytes(gzip.compress(hours.tobytes(), 9))
-    print(f"hours.bin.gz: {hours.shape[0]:,} instapkanten × 24 uur, {(OUT / 'hours.bin.gz').stat().st_size / 1e6:.2f} MB")
+    print(f"hours.bin.gz: {hours.shape[0]:,} instapkanten × {hours.shape[1]} tijdvakken, {(OUT / 'hours.bin.gz').stat().st_size / 1e6:.2f} MB")
 
     meta = {
         "date": DATE,
-        "hours": {"file": "hours.bin.gz", "nBoard": int(hours.shape[0]), "bins": 24},
+        "hours": {"file": "hours.bin.gz", "nBoard": int(hours.shape[0]), "bins": int(hours.shape[1]),
+                  "binMin": int(g["bin_min"])},
         "nArea": n_area, "nLine": n_line, "nNode": n_node, "nEdge": int(len(v)),
         "layout": layout,
         "areaNames": [str(s) for s in g["area_name"]],

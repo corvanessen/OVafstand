@@ -243,7 +243,9 @@ Fase 3, realistisch fietsen:
 - ~~Bezoekers meten (6.2).~~ Klaar, zie "Resultaten fase 6.2".
 - ~~De smartphone (6.3).~~ Klaar in de emulatie, zie "Resultaten fase 6.3". Testen op een echt toestel moet de gebruiker nog doen.
 - ~~6.4 deel 1: het uurmodel en een tijdschuif met afspelen.~~ Klaar, zie "Resultaten fase 6.4, deel 1".
-- **Nu:** 6.4 deel 2: twee frames vooruit rekenen, een overgang tussen de frames, en het diagram met het oppervlak binnen 1 uur. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
+- ~~Nachtlijnen en halve uren in het uurmodel.~~ Klaar, zie "Resultaten fase 6.4: nachtlijnen en halve uren".
+- ~~6.4 deel 2: frames vooruit rekenen, overgang, diagram.~~ Klaar, zie "Resultaten fase 6.4, deel 2".
+- **Nu:** twee vertrekpunten vergelijken (6.5). Eerst de open vraag beantwoorden: welke vergelijking eerst. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -696,6 +698,82 @@ Getest in de emulatie: korte veeg, langzaam slepen omhoog en omlaag, en tikken o
   - het lijndiagram met het oppervlak binnen 1 uur;
   - 48 halve uren in plaats van 24 uren;
   - het weekend.
+
+### Resultaten fase 6.4: nachtlijnen en halve uren (15 okt 2026)
+
+Op branch `fase6-nacht`. In deel 1 was de nacht te somber: de graaf bevatte alleen ritten die tussen 07 en 19 u beginnen.
+- **Hoeveel.** 324 route-richtingen rijden alleen buiten 07–19 u, met 1.299 ritten.
+  - Het zijn vooral nachtbussen.
+  - Daarnaast 78 treinritten: NS heeft per treinserie een eigen route-id, dus ook het nachtnet, vroege en late series, de Nightjet en de bussen die de trein vervangen.
+- **Pijplijn:**
+  - `build_graph.py` neemt lijnknopen en rijkanten van de hele dag op. De lijnknopen van het venster komen eerst, in dezelfde volgorde; daarna 3.547 nachtlijnknopen. Er komen 3.413 rijkanten bij.
+  - Het dagmodel verandert niet. De interval van een nachtlijnknoop is `inf`, dus zijn instapkant kost 65535 en is dicht. Een rijkant buiten het venster wordt `kind=2` in `graph.bin` en telt alleen mee in het uurmodel.
+  - De rijtijden blijven de kortste uit 07–19 u. Alleen voor nachtsegmenten is het de kortste van de hele dag.
+  - Het uurmodel heeft nu **48 halve uren** (`BIN_MIN = 30`). Het kiest per lijnknoop de drukste corridor over de hele dag, niet alleen over 07–19 u.
+  - `hours.bin.gz`: 81.240 instapkanten × 48, **0,64 MB** (was 0,44). `graph.bin`: 3,00 MB (was 2,91).
+- **Browser:**
+  - `search` slaat in het dagmodel instapkanten met kost 65535 en `kind=2` over.
+  - Het aantal tijdvakken komt uit `meta.hours.bins`.
+  - De zoeklijst met treinstations telt alleen treinen die overdag rijden, zodat Wien Hbf (Nightjet) er niet in komt.
+- **Controle:**
+  - Het dagmodel is gelijk aan vóór de wijziging. Vanaf Utrecht C: 38 / 44 / 129 / 123 / 22 / 117 min, en ook vanaf Ruinen en in de browser ("28.960 haltes binnen 3 uur").
+  - Ook de browsertests van 6.1 en de tijdschuif zijn OK.
+
+| Vanaf Utrecht C (min) | Amsterdam C | Rotterdam C | Groningen | Maastricht |
+|---|---|---|---|---|
+| 23:30 | 41 | 48 | 130 | 133 |
+| 00:00 | 41 | 48 | 130 | 205 |
+| 01:00 | 62 (was 141) | 118 (was 119) | – | – |
+| 03:00 | 93 | 162 | – | – |
+| 04:00 | 111 | 128 | 195 | 232 |
+| 05:30 | 49 | 49 | 149 | 142 |
+
+Rond 4 uur zit er een gat tussen het nachtnet en de eerste treinen. Wie om 4:00 vertrekt, is daardoor later in Amsterdam dan wie om 3:00 vertrekt.
+
+**Blijft open:**
+- de rijtijden per tijdvak;
+- het weekend;
+- de FIFO-eigenschap geldt alleen bij benadering.
+
+### Resultaten fase 6.4, deel 2: vloeiend afspelen en diagram (15 okt 2026)
+
+Ook op branch `fase6-nacht`.
+- **Frames vooruit.**
+  - Tijdens het afspelen vraagt `main.ts` steeds de volgende twee halve uren aan (`AHEAD = 2`). Een frame verschijnt pas als het klaar is en het vorige 700 ms in beeld was.
+  - Elke opdracht aan de worker staat in een tabel als gewone kaart ("view") of als frame (met een generatienummer). Na een wijziging (instelling of vertrekpunt) gelden de frames die al klaarstaan niet meer: ze worden weggegooid (`bitmap.close()`), en het afspelen gaat door met de nieuwe instellingen.
+  - **Gemeten** in headless Chrome vanaf Utrecht C: 12 stappen met tussenpozen van 702–735 ms (eenmaal 881). Zonder vooruitrekenen was dat 700 ms plus de rekentijd.
+- **Overgang.** Er zijn twee `ImageSource`-lagen (`heat0` en `heat1`). Een nieuw beeld komt in de laag die niet in beeld is, en die laag vloeit in 400 ms over de oude heen (0 ms bij een gewone klik).
+  - **Witte flits (gevonden door de gebruiker).** Eerst gingen beide lagen lineair: de oude van 0,72 naar 0, de nieuwe van 0 naar 0,72. Halverwege dekten ze samen maar 1 − 0,64² ≈ 0,59 in plaats van 0,72, en de witte basiskaart scheen door.
+  - **Nu:**
+    - de nieuwe laag ligt boven de oude (`moveLayer`) en gaat van 0 naar 0,72;
+    - de oude volgt `1 − 0,28 / (1 − dekking nieuw)`, zodat de basiskaart steeds voor precies 28% doorschijnt;
+    - `crossfade()` stuurt de dekking zelf, in stappen van 50 ms; de ingebouwde overgang staat uit (standaard 300 ms).
+    - Per beeldje bijwerken maakte het afspelen in headless Chrome onregelmatig (0,7–1,25 s per stap), want elke stap is een volledige repaint. Met stappen van 50 ms is het weer 700–715 ms.
+- **Tooltip.** De worker bewaart de laatste vier resultaten per id. De tooltip vraagt het getoonde resultaat op (`resultId`), niet het laatst berekende. Na elk nieuw beeld wordt hij opnieuw berekend.
+- **Diagram** "Binnen 1 uur bereikbaar":
+  - het oppervlak in km² (cellen van ±250 m) per half uur, onder de schuif, met een lijn voor de huidige tijd;
+  - klikken of slepen kiest de tijd;
+  - de worker rekent het per vertrektijd uit (`profile`, met `tMaxMin = 60`, dus sneller dan een hele kaart), op de achtergrond en één tegelijk, alleen als er geen kaart of frame wacht;
+  - het rekent opnieuw na een ander vertrekpunt of andere fietsinstellingen;
+  - vanaf Utrecht C is het in 2,6 s klaar: 2.977 km² om 8:00, 2.804 km² om 12:00, en laag in de nacht;
+  - op mobiel is het verborgen in de ingeklapte sheet.
+- **Getest:** het diagram (48 punten), het afspelen, klikken in het diagram, de telefoontests van 6.3 en de desktoptests van 6.1. Alles OK, zonder consolefouten.
+
+**Flikkeren bij afspelen (gevonden door de gebruiker).** Het bereik ging per half uur op en neer.
+- **Oorzaak.** Veel lijnen rijden één keer per uur op een vaste minuut. De gemiddelde wachttijd per half uur verschilt dan tussen de eerste en de tweede helft van het uur. Een bus om :20 geeft in het eerste halfuur gemiddeld 25 min wachten, in het tweede 35 min.
+- **Deels echt, deels model.** De richting is echt: wie om 9:00 vertrekt, haalt soms meer dan wie om 9:30 vertrekt. Maar de sterkte hing af van waar de grens van het half uur valt. Een kwartier verschuiven veranderde het effect.
+- **Oplossing.** De wachttijd per tijdvak is nu het gemiddelde over **een uur rond het midden van het tijdvak** (`WAIT_WINDOW_MIN = 60`). De resolutie blijft een half uur. Alleen `hours.bin.gz` veranderde; `graph.bin` en het dagmodel bleven gelijk.
+
+| 07–19 u, per stap van een half uur | Utrecht C | Zwolle | Ruinen |
+|---|---|---|---|
+| cellen die van kleurband wisselen, eerst | 17,2% | 14,8% | 32,5% |
+| idem, met venster van een uur | 5,5% | 4,9% | 11,2% |
+| zaagtand in het diagram, eerst | 1,5% | 3,0% | 0,7% |
+| idem, met venster van een uur | 0,9% | 0,9% | 0,3% |
+
+De zaagtand is de gemiddelde afwijking van een half uur ten opzichte van het gemiddelde van zijn buren, in % van het oppervlak. Vertrek op :00/:30 en op :15/:45 geeft nu vrijwel dezelfde kromme.
+
+**Prijs.** Overgangen worden ±30 min uitgesmeerd. Een voorbeeld vanaf Utrecht C om 00:00: Rotterdam kost nu 99 min, was 48, want het venster valt al deels in het nachtgat. Het precieze minuutverschil per vertrektijd hoort bij fase 4 (een echte dienstregelingsrouter, met de mediaan over meerdere vertrekmomenten per frame).
 
 ### 6.6 Volgorde
 

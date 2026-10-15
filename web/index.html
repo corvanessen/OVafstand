@@ -62,6 +62,7 @@
               <input id="departMin" type="range" min="0" max="1410" step="30" aria-label="Vertrektijd" />
               <output id="departOut" class="clock">08:00</output>
             </div>
+            <div class="chart" id="chart" hidden></div>
           </div>
           <p class="hint" id="hint">Klik op de kaart of sleep de punt om het vertrekpunt te verplaatsen.</p>
 
@@ -109,11 +110,11 @@
               Of de hele reis fietsen, als dat sneller is. Het fietsen gaat over echte wegen en fietspaden uit OpenStreetMap.</p>
             <p><b>Realistisch</b> telt bij elke instap de helft van de tijd tussen twee vertrekken als wachttijd (hooguit 30 min).
               <b>Optimistisch</b> doet alsof je overstap altijd klaarstaat.</p>
-            <p><b>Vertrek op een tijdstip</b> rekent per uur met de echte vertrekken van die dag: de gemiddelde wachttijd
+            <p><b>Vertrek op een tijdstip</b> rekent per half uur met de echte vertrekken van die dag, ook de nachtlijnen: de gemiddelde wachttijd
               als je op een willekeurig moment bij de halte komt. Zo zie je hoe de kaart 's avonds en 's nachts krimpt.
               Met ▶ loopt de klok een werkdag door.</p>
-            <p><b>Beperkingen.</b> Zonder tijdstip rekent de kaart met een gewone werkdag overdag (07–19 u). Het weekend zit er niet in,
-              en lijnen die alleen 's nachts rijden ook niet. Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
+            <p><b>Beperkingen.</b> Zonder tijdstip rekent de kaart met een gewone werkdag overdag (07–19 u). Het weekend zit er niet in.
+              Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
             <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.
               Bezoeken worden geteld met GoatCounter, zonder cookies en zonder je locatie.</p>
           </details>
