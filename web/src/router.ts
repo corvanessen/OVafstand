@@ -32,12 +32,27 @@ export interface Params {
   directMaxKm: number; // max fietsafstand vanaf het vertrekpunt (direct, of naar de eerste halte)
   tMaxMin: number; // kleurschaal en zoekgrens
   realBike: boolean; // fietsen over de weg (fietsraster uit OSM) in plaats van hemelsbreed × DETOUR
+  bikeStart: boolean; // fiets bij vertrek; anders lopen (WALK_KMH, tot WALK_MAX_KM)
+  bikeEnd: boolean; // fiets bij aankomst (van de laatste halte naar de bestemming); anders lopen
   // vertrektijd in minuten na middernacht (uurmodel, realistische wachttijd per uur);
   // null = een gemiddelde werkdag 07–19 u met waitFactor
   departMin: number | null;
 }
 
 export const DETOUR = 1.3; // hemelsbreed -> over de weg
+export const WALK_KMH = 5;
+export const WALK_MAX_KM = 2; // ±25 min lopen naar of van een halte (en direct lopen)
+
+/** snelheid (m/s) en grens (m) van het eerste stuk (vanaf het vertrekpunt) en het laatste (vanaf de halte):
+ *  fietsen, of lopen als die fiets er niet is. Lopen gaat over hetzelfde fietsraster, met een andere snelheid. */
+export function legs(p: Params) {
+  return {
+    startV: (p.bikeStart ? p.bikeKmh : WALK_KMH) / 3.6,
+    startMax: (p.bikeStart ? p.directMaxKm : WALK_MAX_KM) * 1000,
+    endV: (p.bikeEnd ? p.bikeKmh : WALK_KMH) / 3.6,
+    endMax: (p.bikeEnd ? p.bikeMaxKm : WALK_MAX_KM) * 1000,
+  };
+}
 const KIND_BOARD = 1;
 const KIND_NIGHT = 2; // rijkant die alleen buiten 07–19 u bestaat: alleen in het uurmodel
 const CLOSED = 65535; // instapkost van een lijnknoop die in 07–19 u niet rijdt
@@ -159,11 +174,10 @@ class Heap {
   }
 }
 
-/** begintijden (s) per halteplek: hemelsbreed × DETOUR fietsen vanaf het vertrekpunt, binnen directMaxKm */
+/** begintijden (s) per halteplek: hemelsbreed × DETOUR fietsen (of lopen) vanaf het vertrekpunt, binnen de grens */
 export function straightAccess(g: Graph, lat: number, lon: number, p: Params): Float64Array {
   const init = new Float64Array(g.nArea).fill(Infinity);
-  const v = p.bikeKmh / 3.6;
-  const accessMax = p.directMaxKm * 1000;
+  const { startV: v, startMax: accessMax } = legs(p);
   for (let a = 0; a < g.nArea; a++) {
     const d = distM(lat, lon, g.areaLat[a], g.areaLon[a]) * DETOUR;
     if (d <= accessMax) init[a] = d / v;

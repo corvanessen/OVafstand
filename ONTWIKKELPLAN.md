@@ -820,7 +820,7 @@ Op branch `fase6-vergelijk`.
 
 ### 6.7 Nieuwe ideeën (15 okt 2026)
 
-Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4. Stap 1 en "Verschil" zijn klaar; **volgende stap: stap 2** (fietsschakelaars).
+Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4. Stap 1, "Verschil" en stap 2 zijn klaar; **volgende stap: stap 3** (slechtste bereikbaarheid).
 
 1. **Rustiger op de desktop.** Hover toont alleen een klein label met de minuten. Een klik zet de reisinfo vast bovenaan het paneel, met een knop "Vertrek vanaf hier", net als tikken op de telefoon. Het paneel is in te klappen. Klaar, zie hieronder.
 2. **Fiets bij vertrek en bij aankomst als schakelaars.** Niet iedereen heeft aan beide kanten een fiets. Staat een schakelaar uit, dan loop je dat stuk (±5 km/u, kortere grens), over hetzelfde fietsraster met een andere snelheid. Dat is een benadering, want voetpaden waar je niet mag fietsen ontbreken. **Standaard: fiets bij aankomst uit** (keuze van de gebruiker). Dat is realistischer, maar de kaart wordt op het platteland merkbaar donkerder en oude deellinks geven een ander beeld. Nieuwe sleutels in de deellink.
@@ -847,6 +847,25 @@ Op branch `fase6-vergelijk`.
   - op de telefoon (390 px) komt de reisinfo in de half open sheet, en de inklapknop is daar verborgen.
 
   Alles werkt, zonder consolefouten.
+
+### Resultaten fase 6.7, stap 2: fiets bij vertrek en bij aankomst (15 okt 2026)
+
+Op branch `fase6-vergelijk`.
+- **Model.** Twee nieuwe instellingen: `bikeStart` (standaard aan) en `bikeEnd` (standaard **uit**). Zonder fiets loop je dat stuk: 5 km/u, hooguit 2 km (`WALK_KMH`, `WALK_MAX_KM`), ook direct vanaf het vertrekpunt.
+  - Lopen gaat over hetzelfde fietsraster, alleen met een andere snelheid en grens. Voetpaden waar je niet mag fietsen ontbreken dus.
+  - `legs(p)` in `router.ts` geeft per stuk de snelheid en de grens. Kegels (`raster.ts`), fietsraster (`bikegrid.ts`) en `straightAccess` gebruiken die. Het aanvullen van lege cellen (`fillGaps`) rekent met het tempo van het stuk waar de buurcel vandaan komt.
+- **Bediening.** Twee vinkjes bij Instellingen → Fietsen. Een schuif die niet meetelt, staat uit: de fietsgrens van de halte zonder fiets bij aankomst, enzovoort. De voetregel zegt wat er geldt ("fiets bij vertrek, lopen bij aankomst"). De route toont "Loop 13 min naar bestemming". Overstaplopen onder een halve minuut wordt niet meer getoond.
+- **Deellink** `&s=0` (lopen bij vertrek), `&a=1` (fiets bij aankomst). **Oude deellinks geven nu een ander beeld**, want daarin ontbreekt `a=1`. Dat is bewust gekozen.
+- **Controle** vanaf Utrecht C (fietsraster):
+
+| Instelling | Haltes binnen 3 uur | Naar Amersfoort, Zon en Schild |
+|---|---|---|
+| fiets heen en terug (zoals vroeger) | 28.960, gelijk aan vóór de wijziging | 40 min (Sprinter, fiets 16 min) |
+| fiets bij vertrek, lopen bij aankomst (standaard) | 28.960 | 53 min (bus 73 en 34, lopen 13 min) |
+| lopen aan beide kanten | 28.736 | 55 min |
+
+  Het aantal haltes hangt alleen af van het eerste stuk. De kaart wordt met lopen bij aankomst duidelijk vlekkeriger buiten de steden. Ook hemelsbreed (`f=0`), een ongeldige `s=2` en `hashchange` zijn getest. Er waren geen consolefouten.
+- **Nog doen:** `og.png` opnieuw maken, want de standaardkaart is veranderd.
 
 ### 6.6 Volgorde
 

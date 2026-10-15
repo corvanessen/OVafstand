@@ -99,7 +99,10 @@
             </fieldset>
             <fieldset>
               <legend>Fietsen</legend>
+              <label><input id="bikeStart" type="checkbox" /> Fiets bij vertrek</label>
+              <label><input id="bikeEnd" type="checkbox" /> Fiets bij aankomst</label>
               <label><input id="realBike" type="checkbox" /> Over de weg (OpenStreetMap)</label>
+              <p class="field-note">Zonder fiets loop je dat stuk: 5 km/u, hooguit 2 km.</p>
             </fieldset>
             <label class="range">Fietssnelheid <output id="bikeKmhOut"></output>
               <input id="bikeKmh" type="range" min="10" max="25" step="1" />
@@ -125,8 +128,9 @@
             <summary>Hoe werkt dit?</summary>
             <p>Elke kleur is een kwartier reistijd, van groen (dichtbij) naar paars. Zonder kleur: niet bereikbaar binnen de kleurschaal.
               Beweeg over de kaart voor de reistijd. Klik of tik voor de route, met een knop om daarvandaan te vertrekken.</p>
-            <p>Een reis is: fietsen naar een halte, met trein, bus, tram, metro of veerboot verder, en het laatste stuk weer fietsen.
-              Of de hele reis fietsen, als dat sneller is. Het fietsen gaat over echte wegen en fietspaden uit OpenStreetMap.</p>
+            <p>Een reis is: fietsen naar een halte, met trein, bus, tram, metro of veerboot verder, en het laatste stuk lopen.
+              Of de hele reis fietsen, als dat sneller is. Het fietsen en lopen gaat over echte wegen en fietspaden uit OpenStreetMap.
+              Heb je ook op de plek van aankomst een fiets (een tweede fiets of een OV-fiets)? Zet dan bij de instellingen <b>Fiets bij aankomst</b> aan.</p>
             <p><b>Realistisch</b> telt bij elke instap de helft van de tijd tussen twee vertrekken als wachttijd (hooguit 30 min).
               <b>Optimistisch</b> doet alsof je overstap altijd klaarstaat.</p>
             <p><b>Vertrek op een tijdstip</b> rekent per half uur met de echte vertrekken van die dag, ook de nachtlijnen: de gemiddelde wachttijd

@@ -2,7 +2,7 @@
 // Elke bereikte halteplek tekent een kegel in een venster rond zich; het raster houdt het minimum.
 
 import { CELL, NX, NY, ROW_SCALE, X0, Y0, mercX, mercY } from "./grid";
-import { DETOUR, type Graph, type Params, type Search } from "./router";
+import { DETOUR, legs, type Graph, type Params, type Search } from "./router";
 
 export const VIA_DIRECT = -1;
 export const VIA_NONE = -2;
@@ -53,14 +53,13 @@ export function cone(
 
 export function rasterize(g: Graph, s: Search, lat: number, lon: number, p: Params): Raster {
   const r = newRaster();
-  const v = p.bikeKmh / 3.6;
+  const { startV, startMax, endV, endMax } = legs(p);
   const tMax = p.tMaxMin * 60;
-  cone(r, mercX(lon), mercY(lat), 0, p.directMaxKm * 1000, v, VIA_DIRECT, tMax);
-  const bikeMax = p.bikeMaxKm * 1000;
+  cone(r, mercX(lon), mercY(lat), 0, startMax, startV, VIA_DIRECT, tMax);
   for (let a = 0; a < g.nArea; a++) {
     const t = s.dist[a];
     if (t >= tMax) continue;
-    cone(r, mercX(g.areaLon[a]), mercY(g.areaLat[a]), t, bikeMax, v, a, tMax);
+    cone(r, mercX(g.areaLon[a]), mercY(g.areaLat[a]), t, endMax, endV, a, tMax);
   }
   return r;
 }

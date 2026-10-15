@@ -29,6 +29,7 @@ function track(event: string) {
 // ---------- instellingen ----------
 const DEFAULTS: Params = {
   waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true, departMin: null,
+  bikeStart: true, bikeEnd: false,
 };
 const params: Params = { ...DEFAULTS };
 let bikeLoaded = false; // het fietsraster komt na de graaf binnen
@@ -42,6 +43,8 @@ const RANGES: [NumParam, (v: number) => string][] = [
 ];
 const modelRadios = [...document.querySelectorAll<HTMLInputElement>("input[name=model]")];
 const realBikeBox = $<HTMLInputElement>("realBike");
+// fiets bij vertrek en bij aankomst (fase 6.7): zonder fiets loop je dat stuk
+const LEG_BOXES = [["bikeStart", $<HTMLInputElement>("bikeStart")], ["bikeEnd", $<HTMLInputElement>("bikeEnd")]] as const;
 const tMaxSel = $<HTMLSelectElement>("tMaxMin");
 
 for (const [id, fmt] of RANGES) {
@@ -62,6 +65,19 @@ realBikeBox.addEventListener("change", () => {
   params.realBike = realBikeBox.checked;
   settingsChanged();
 });
+for (const [key, box] of LEG_BOXES) {
+  box.addEventListener("change", () => {
+    params[key] = box.checked;
+    syncLegs();
+    settingsChanged();
+  });
+}
+/** schuiven die bij lopen niet meetellen, uitzetten */
+function syncLegs() {
+  $<HTMLInputElement>("directMaxKm").disabled = !params.bikeStart;
+  $<HTMLInputElement>("bikeMaxKm").disabled = !params.bikeEnd;
+  $<HTMLInputElement>("bikeKmh").disabled = !params.bikeStart && !params.bikeEnd;
+}
 tMaxSel.addEventListener("change", () => {
   params.tMaxMin = +tMaxSel.value;
   renderLegend();
@@ -170,7 +186,7 @@ let profileKey = "";
 /** na elke wijziging: opnieuw beginnen als het vertrekpunt of het fietsen anders is */
 function checkProfile() {
   const key = JSON.stringify([points(), params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
-    params.realBike && bikeLoaded]);
+    params.bikeStart, params.bikeEnd, params.realBike && bikeLoaded]);
   if (key !== profileKey) {
     profileKey = key;
     profileGen++;
@@ -276,6 +292,8 @@ function syncControls() {
   }
   for (const el of modelRadios) el.checked = +el.value === params.waitFactor;
   realBikeBox.checked = params.realBike;
+  for (const [key, box] of LEG_BOXES) box.checked = params[key];
+  syncLegs();
   tMaxSel.value = String(params.tMaxMin);
   renderLegend();
   syncTime();
@@ -349,6 +367,7 @@ function renderDiffLegend() {
 // p2 is punt B bij vergelijken (b is al de fietsgrens), m=diff de stand "Verschil".
 const HASH_KEYS = {
   w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike", u: "departMin",
+  s: "bikeStart", a: "bikeEnd",
 } as const;
 type HashParam = (typeof HASH_KEYS)[keyof typeof HASH_KEYS];
 type Origin = { lat: number; lon: number; name: string };
@@ -357,7 +376,7 @@ type Origin = { lat: number; lon: number; name: string };
 function parseSetting(key: HashParam, raw: string): number | boolean | null {
   const v = Number(raw);
   if (raw === "" || !Number.isFinite(v)) return null;
-  if (key === "realBike") return v === 0 || v === 1 ? v === 1 : null;
+  if (key === "realBike" || key === "bikeStart" || key === "bikeEnd") return v === 0 || v === 1 ? v === 1 : null;
   if (key === "waitFactor") return modelRadios.some((r) => +r.value === v) ? v : null;
   if (key === "tMaxMin") return [...tMaxSel.options].some((o) => +o.value === v) ? v : null;
   const input = $<HTMLInputElement>(key);
@@ -641,7 +660,9 @@ function showResult(m: ResultMsg, fade: boolean) {
   $("status").textContent = reached + " · " +
     `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms` +
     (params.realBike && !bikeLoaded ? " · fietsraster laden…" : "");
-  $("bikeNote").textContent = m.bike ? "fietsen over de weg (OpenStreetMap)" : "fietsafstand hemelsbreed × 1,3";
+  const legNote = params.bikeStart === params.bikeEnd ? (params.bikeStart ? "fiets heen en terug" : "lopen van en naar de halte")
+    : params.bikeStart ? "fiets bij vertrek, lopen bij aankomst" : "lopen bij vertrek, fiets bij aankomst";
+  $("bikeNote").textContent = legNote + " · " + (m.bike ? "over de weg (OpenStreetMap)" : "afstand hemelsbreed × 1,3");
   hasResult = true;
   // het beeld is anders: het label en de vastgezette reisinfo opnieuw laten uitrekenen
   hoverSent = null;
@@ -805,18 +826,22 @@ function hoverHtml(m: Extract<Response, { type: "explain" }>): string {
     : `<div class="tt-sub">Niet voor allebei · ${each}</div>`;
 }
 
-/** de etappes van één reis, met het laatste stuk fietsen */
+const leg = (bike: boolean, min: number, to: string) =>
+  `<li class="${bike ? "bike" : "walk"}">${bike ? "Fiets" : "Loop"} ${fmtMin(min)} naar ${to}</li>`;
+
+/** de etappes van één reis, met het laatste stuk fietsen of lopen */
 function legsHtml(m: Explained): string {
   const rows: string[] = [];
   for (const s of m.segments) {
-    if (s.kind === "bike") { if (s.minutes >= 0.5) rows.push(`<li class="bike">Fiets ${fmtMin(s.minutes)} naar ${esc(s.to)}</li>`); }
-    else if (s.kind === "walk") rows.push(`<li class="walk">Loop ${fmtMin(s.minutes)} naar ${esc(s.to)}</li>`);
+    if (s.kind === "bike") { if (s.minutes >= 0.5) rows.push(leg(params.bikeStart, s.minutes, esc(s.to))); }
+    else if (s.kind === "walk") { if (s.minutes >= 0.5) rows.push(`<li class="walk">Loop ${fmtMin(s.minutes)} naar ${esc(s.to)}</li>`); }
     else {
       const wait = s.wait >= 0.5 ? ` <span class="wait">+${Math.round(s.wait)} wacht</span>` : "";
       rows.push(`<li class="ride t${s.route[1]}">${routeLabel(s)} ${fmtMin(s.minutes)}${wait}<br><small>${esc(s.from)} → ${esc(s.to)}</small></li>`);
     }
   }
-  rows.push(`<li class="bike">Fiets ${fmtMin(m.lastBike)} naar bestemming</li>`);
+  // direct (zonder OV) is het hele stuk het eerste stuk
+  rows.push(leg(m.segments.length ? params.bikeEnd : params.bikeStart, m.lastBike, "bestemming"));
   return `<ol class="legs">${rows.join("")}</ol>`;
 }
 
