@@ -4,7 +4,7 @@ import { csaPath, csaSearch, footpaths, loadTimetable, type CsaRun, type Footpat
 import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "./bikegrid";
 import { NX, NY, cellOf } from "./grid";
 import { colorize, colorizeDiff, rasterize, VIA_DIRECT, VIA_NONE, type Raster } from "./raster";
-import { applyDay, loadDay, loadGraph, pathTo, type Day, search, straightAccess, type Graph, type Params, type Search, type Segment } from "./router";
+import { applyDay, loadDay, loadGraph, pathTo, type Day, search, straightAccess, type Graph, type Params, type Route, type Search, type Segment } from "./router";
 
 export interface Point {
   lat: number;
@@ -57,31 +57,14 @@ export interface Station {
   lon: number;
 }
 
-/** halteplekken waar je in een trein kunt stappen, voor de zoekbalk */
-function trainStations(g: Graph): Station[] {
-  const out: Station[] = [];
-  for (let a = 0; a < g.nArea; a++) {
-    for (let e = g.offsets[a]; e < g.offsets[a + 1]; e++) {
-      const t = g.target[e];
-      // instappen in een trein die ook overdag rijdt (65535 = alleen 's nachts, zoals de Nightjet)
-      if (t >= g.nArea && g.cost[e] !== 65535 && g.routes[g.lineRoute[t - g.nArea]][1] === 2) {
-        out.push({ name: g.areaNames[a], lat: g.areaLat[a], lon: g.areaLon[a] });
-        break;
-      }
-    }
-  }
-  return out;
-}
-
-/** IC-stations: halteplekken waar overdag een Intercity instapt (geen internationale treinen) */
-function icStations(g: Graph): number[] {
+/** halteplekken waar je op de werkdag overdag instapt in een lijn waarvoor test(route) geldt
+ *  (instapkost 65535 = alleen 's nachts, zoals de Nightjet) */
+function areasWithRoute(g: Graph, test: (r: Route) => boolean): number[] {
   const out: number[] = [];
   for (let a = 0; a < g.nArea; a++) {
     for (let e = g.offsets[a]; e < g.offsets[a + 1]; e++) {
       const t = g.target[e];
-      if (t < g.nArea || g.cost[e] === 65535) continue;
-      const [short, type, agency] = g.routes[g.lineRoute[t - g.nArea]];
-      if (type === 2 && short.startsWith("Intercity") && agency !== "IFF:NS_INT") {
+      if (t >= g.nArea && g.cost[e] !== 65535 && test(g.routes[g.lineRoute[t - g.nArea]])) {
         out.push(a);
         break;
       }
@@ -89,6 +72,12 @@ function icStations(g: Graph): number[] {
   }
   return out;
 }
+/** halteplekken waar je in een trein kunt stappen, voor de zoekbalk */
+const trainStations = (g: Graph): Station[] =>
+  areasWithRoute(g, (r) => r[1] === 2).map((a) => ({ name: g.areaNames[a], lat: g.areaLat[a], lon: g.areaLon[a] }));
+/** IC-stations: waar een Intercity instapt (geen internationale treinen) */
+const icStations = (g: Graph) =>
+  areasWithRoute(g, ([short, type, agency]) => type === 2 && short.startsWith("Intercity") && agency !== "IFF:NS_INT");
 
 let graph: Graph | null = null;
 let icAreas: number[] = [];
@@ -104,8 +93,8 @@ interface Run {
   useBike: boolean;
   msRoute: number;
   msRaster: number;
-  // met de dienstregeling: om de route naar een halteplek opnieuw uit te rekenen
-  csa: { tt: Timetable; run: CsaRun } | null;
+  // met de dienstregeling: om de route naar een halteplek opnieuw uit te rekenen (op die dag)
+  csa: { tt: Timetable; run: CsaRun; day: Day } | null;
 }
 // de laatste resultaten per id: tijdens afspelen is het getoonde beeld niet het laatst berekende
 const results = new Map<number, Run[]>();
@@ -131,7 +120,7 @@ function run(g: Graph, pt: Point | null, p: Params, tt: Timetable | null): Run {
   if (tt && p.departMin !== null) {
     const res = csaSearch(g, tt, (walks ??= footpaths(g)), init, p);
     s = res.s;
-    csa = { tt, run: res.csa };
+    csa = { tt, run: res.csa, day: p.day };
   } else s = search(g, init, p);
   const t1 = performance.now();
   const r = useBike ? rasterizeBike(bike!, g, s, pt, p) : rasterize(g, s, pt, p);
@@ -169,7 +158,11 @@ function explainRun(g: Graph, { s, r, csa }: Run, c: number): Explained {
   if (via === VIA_DIRECT) return { minutes, segments: [], lastBike: minutes };
   const lastBike = minutes - s.dist[via] / 60;
   if (!csa) return { minutes, segments: pathTo(g, s, via), lastBike };
+  // de scan gebruikt de halteplekken van de dag van dit resultaat, ook als intussen een andere dag gekozen is
+  const now = g.day;
+  applyDay(g, csa.day);
   const { segments, t0 } = csaPath(g, csa.tt, walks!, csa.run, via);
+  applyDay(g, now);
   return { minutes, segments, lastBike, leave: t0 };
 }
 
@@ -197,6 +190,15 @@ async function prepareDay(g: Graph, p: Params): Promise<Timetable | null> {
   return tt;
 }
 
+/** de dag van een opdracht laden en kiezen, plus de punten (null: vanaf alle IC-stations).
+ *  Wat na de await komt, moet synchroon blijven (zie prepareDay). */
+async function prepare(g: Graph, source: Source, a: Point, b: Point | null, p: Params) {
+  const tt = await prepareDay(g, p);
+  applyDay(g, p.day);
+  const pts: (Point | null)[] = source === "ic" ? [null] : b ? [a, b] : [a];
+  return { tt, pts };
+}
+
 const post = (msg: Response, transfer: Transferable[] = []) => self.postMessage(msg, { transfer });
 
 self.onmessage = async (ev: MessageEvent<Request>) => {
@@ -220,10 +222,8 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       post({ type: "bikeReady", ok: bike !== null, ms: performance.now() - t1, nNode: bike?.nNode ?? 0 });
     } else if (m.type === "compute" && graph) {
       // het uurmodel (±0,6 MB) pas laden als er een vertrektijd gekozen is
-      const tt = await prepareDay(graph, m.params);
       const g = graph;
-      applyDay(g, m.params.day);
-      const pts = m.source === "ic" ? [null] : m.b ? [m.a, m.b] : [m.a];
+      const { tt, pts } = await prepare(g, m.source, m.a, m.b, m.params);
       const runs = pts.map((pt) => cachedRun(g, pt, m.params, tt));
       const t1 = performance.now();
       const diff = m.mode === "diff" && runs.length === 2;
@@ -252,12 +252,10 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
         bike: runs[0].useBike, timetable: tt !== null }, [bitmap]);
     } else if (m.type === "profile" && graph) {
       const p = { ...m.params, departMin: m.departMin };
-      const tt = await prepareDay(graph, p);
+      const g = graph;
+      const { tt, pts } = await prepare(g, m.source, m.a, m.b, p);
       // zonder uurmodel geen vertrektijd: toch antwoorden, anders wacht het diagram voor altijd
       if (p.departMin === null) return post({ type: "profile", gen: m.gen, departMin: m.departMin, km2: NaN });
-      const g = graph;
-      applyDay(g, p.day);
-      const pts = m.source === "ic" ? [null] : m.b ? [m.a, m.b] : [m.a];
       const time = maxTime(pts.map((pt) => run(g, pt, p, tt)));
       let n = 0;
       for (let i = 0; i < time.length; i++) if (time[i] < p.tMaxMin) n++;

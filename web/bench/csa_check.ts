@@ -44,7 +44,7 @@ async function main() {
         TARGETS.map((n) => `${n.split(" ")[0]} ${Math.round(d[idx(n)] / 60)} (${Math.round(u[idx(n)] / 60)})`).join(", "));
       if (departMin === 480) {
         const gr = idx("Groningen");
-        const segs = csaPath(g, tt, fp, csa, gr);
+        const { segments: segs } = csaPath(g, tt, fp, csa, gr);
         console.log("  route naar Groningen (vertrek", (csa.t0s[csa.pick[gr]] / 60 / 60).toFixed(2), "u):");
         for (const sg of segs) console.log("   ", JSON.stringify(sg.kind === "ride" ? { ...sg, route: sg.route[0] } : sg));
         const total = segs.reduce((t, sg) => t + sg.minutes + (sg.kind === "ride" ? sg.wait : 0), 0);
