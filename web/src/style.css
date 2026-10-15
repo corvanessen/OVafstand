@@ -58,7 +58,7 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 .fold:hover { background: #e4e7ec; color: var(--fg); }
 #panel.folded { width: 280px; }
 #panel.folded .sub,
-#panel.folded .body > :not(.origin-row):not(.legend-wrap):not(.time-row.active):not(.compare-note) { display: none; }
+#panel.folded .body > :not(.origin-row):not(.legend-wrap):not(.time-row.active):not(.compare-note):not(.compare-mode) { display: none; }
 #panel.folded :is(.time-toggle, .chart) { display: none; }
 #panel.folded header { padding-bottom: 2px; }
 
@@ -110,12 +110,21 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 .origin-row.editing { border-color: var(--accent); background: #f2f5fb; }
 .origin-row > div { flex: 1; min-width: 0; }
 #origin, #originB { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#rowB[hidden], .compare-note[hidden], .small-btn[hidden] { display: none; }
+#rowB[hidden], .compare-note[hidden], .compare-mode[hidden], .small-btn[hidden], #legendCaption[hidden] { display: none; }
 .row-close {
   flex: none; width: 32px; height: 32px; border: 0; border-radius: 6px;
   background: none; color: var(--muted); font-size: 20px; cursor: pointer;
 }
 .row-close:hover { background: #e4e7ec; color: var(--fg); }
+/* schakelaar met twee standen: "Voor ons allebei" of "Verschil" */
+.compare-mode { display: flex; margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.compare-mode button {
+  flex: 1; padding: 6px 8px; border: 0; background: var(--bg); color: var(--fg);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.compare-mode button + button { border-left: 1px solid var(--line); }
+.compare-mode button:hover { background: #f6f8fb; }
+.compare-mode button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .compare-note { font-size: 12px; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
 .tt-part { margin-top: 8px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .tag {
@@ -181,6 +190,9 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 #legendLabels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 #legendLabels span:first-child { transform: none; }
 #legendLabels span:last-child { transform: translateX(-100%); }
+#legendCaption { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; }
+#legendCaption span:first-child { color: #8c510a; font-weight: 600; }
+#legendCaption span:last-child { color: #01665e; font-weight: 600; }
 
 details { border-top: 1px solid var(--line); padding-top: 10px; }
 details + details { margin-top: 8px; }

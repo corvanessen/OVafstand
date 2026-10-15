@@ -798,9 +798,29 @@ Op branch `fase6-vergelijk`, vanaf `fase6-nacht`.
 
   Alles werkt, zonder consolefouten.
 
+### Resultaten fase 6.5, deel 2: "Verschil" (15 okt 2026)
+
+Op branch `fase6-vergelijk`.
+- **Bediening.** Onder de rijen A en B staat een schakelaar met twee standen: "Voor ons allebei" en "Verschil". De uitleg eronder past zich aan. Na stoppen met vergelijken staat hij weer op "Voor ons allebei".
+- **Kaart.** Per cel A − B, tweekleurig (ColorBrewer BrBG, kleurenblindveilig): bruin is sneller vanaf A, petrol sneller vanaf B, net als markering B.
+  - Banden van 5, 15, 30 en 60 min naar elke kant. Minder dan 5 min verschil is grijs ("even snel").
+  - Haalt maar één punt de cel binnen de kleurschaal, dan telt de ander als de grens van de kleurschaal. Het verschil is dan een ondergrens. Haalt geen van beide de cel, dan blijft hij leeg.
+  - De legenda toont de grenzen in minuten, met "A sneller" en "B sneller" eronder.
+- **Tooltip en reisinfo.** Bovenaan "10 min sneller vanaf A", "Even snel" of "Alleen vanaf B", daaronder beide routes.
+- **Statusregel.** "29.608 haltes binnen 3 uur: A sneller bij 21.026, B bij 8.582" (Utrecht C en Zwolle).
+- **Rekenen.** Wisselen tussen de standen rekent niets opnieuw: beide runs komen uit `cachedRun`. Alleen het kleuren kost ±40 ms. Het diagram blijft "Voor allebei binnen 1 uur", ook in de stand "Verschil".
+- **Deellink** `&m=diff`, alleen bij vergelijken. GoatCounter telt `vergelijken-verschil`.
+- **Getest** in headless Chrome:
+  - wisselen naar "Verschil" en terug;
+  - de tooltip en de reisinfo bij Putten: A 52 min, B 1 u 02, dus "10 min sneller vanaf A";
+  - een deellink met `m=diff` via `hashchange`, de tijdschuif, stoppen met vergelijken;
+  - een smal scherm.
+
+  Alles werkt, zonder consolefouten.
+
 ### 6.7 Nieuwe ideeën (15 okt 2026)
 
-Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4.
+Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4. Stap 1 en "Verschil" zijn klaar; **volgende stap: stap 2** (fietsschakelaars).
 
 1. **Rustiger op de desktop.** Hover toont alleen een klein label met de minuten. Een klik zet de reisinfo vast bovenaan het paneel, met een knop "Vertrek vanaf hier", net als tikken op de telefoon. Het paneel is in te klappen. Klaar, zie hieronder.
 2. **Fiets bij vertrek en bij aankomst als schakelaars.** Niet iedereen heeft aan beide kanten een fiets. Staat een schakelaar uit, dan loop je dat stuk (±5 km/u, kortere grens), over hetzelfde fietsraster met een andere snelheid. Dat is een benadering, want voetpaden waar je niet mag fietsen ontbreken. **Standaard: fiets bij aankomst uit** (keuze van de gebruiker). Dat is realistischer, maar de kaart wordt op het platteland merkbaar donkerder en oude deellinks geven een ander beeld. Nieuwe sleutels in de deellink.

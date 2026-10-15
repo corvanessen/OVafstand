@@ -5,9 +5,9 @@ import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import type { LayerSpecification } from "maplibre-gl";
 import { geocode, type Place } from "./geocode";
 import { CORNERS, cellOf } from "./grid";
-import { BAND_MIN, bandColor } from "./raster";
+import { BAND_MIN, DIFF_A, DIFF_B, DIFF_EDGES, DIFF_SAME, bandColor } from "./raster";
 import type { Params, Segment } from "./router";
-import type { Explained, Request, Response, Station } from "./worker";
+import type { CompareMode, Explained, Request, Response, Station } from "./worker";
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -296,9 +296,11 @@ function afterChange() {
 }
 
 function renderLegend() {
-  const n = Math.ceil(params.tMaxMin / BAND_MIN);
   const el = $("legend");
   el.innerHTML = "";
+  $("legendCaption").hidden = !diffShown();
+  if (diffShown()) return renderDiffLegend();
+  const n = Math.ceil(params.tMaxMin / BAND_MIN);
   for (let b = 0; b < n; b++) {
     const [r, g, bl] = bandColor(b, n);
     const sw = document.createElement("span");
@@ -315,10 +317,36 @@ function renderLegend() {
     labels.append(s);
   }
 }
+/** verschil A − B: bruin (A sneller) via grijs naar petrol (B sneller), met de grenzen in minuten */
+function renderDiffLegend() {
+  const edges = DIFF_EDGES;
+  const bands = [
+    ...DIFF_A.map((c, k) => [c, `A ${edges[k]}${k + 1 < edges.length ? "–" + edges[k + 1] : "+"} min sneller`]).reverse(),
+    [DIFF_SAME, `minder dan ${edges[0]} min verschil`],
+    ...DIFF_B.map((c, k) => [c, `B ${edges[k]}${k + 1 < edges.length ? "–" + edges[k + 1] : "+"} min sneller`]),
+  ];
+  for (const [c, title] of bands) {
+    const sw = document.createElement("span");
+    sw.style.background = c;
+    sw.title = title;
+    $("legend").append(sw);
+  }
+  // een getal op elke grens tussen twee banden
+  const labels = $("legendLabels");
+  labels.innerHTML = "";
+  const marks = [...edges.slice().reverse(), ...edges];
+  for (const [i, m] of marks.entries()) {
+    const s = document.createElement("span");
+    s.textContent = i === 0 || i === marks.length - 1 ? `${m}′` : String(m);
+    s.style.left = `${((i + 1) / bands.length) * 100}%`;
+    s.style.transform = "translateX(-50%)";
+    labels.append(s);
+  }
+}
 
-// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&p2=lat,lon,naam ----------
+// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&p2=lat,lon,naam&m=diff ----------
 // Alleen afwijkingen van de standaard komen in de link; onbekende of ongeldige waarden worden genegeerd.
-// p2 is punt B bij vergelijken (b is al de fietsgrens).
+// p2 is punt B bij vergelijken (b is al de fietsgrens), m=diff de stand "Verschil".
 const HASH_KEYS = {
   w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike", u: "departMin",
 } as const;
@@ -350,21 +378,23 @@ function parsePoint(s: string): Origin | null {
 const fmtPoint = ({ lat, lon, name }: Origin) =>
   `${lat.toFixed(5)},${lon.toFixed(5)}${name ? "," + encodeURIComponent(name) : ""}`;
 
-function readHash(): { origin: Origin; b: Origin | null; settings: Partial<Params> } | null {
+function readHash(): { origin: Origin; b: Origin | null; mode: CompareMode; settings: Partial<Params> } | null {
   // het vertrekpunt staat vooraan; daarna volgen de instellingen, elk na een &
   const [head, ...rest] = location.hash.slice(1).split("&");
   const origin = parsePoint(head);
   if (!origin) return null;
   const settings: Record<string, number | boolean> = {};
   let b: Origin | null = null;
+  let mode: CompareMode = "max";
   for (const part of rest) {
     const [k, raw] = part.split("=");
     if (k === "p2" && raw !== undefined) b = parsePoint(raw);
+    if (k === "m" && raw === "diff") mode = "diff";
     const key = HASH_KEYS[k as keyof typeof HASH_KEYS];
     const v = key && raw !== undefined ? parseSetting(key, raw) : null;
     if (v !== null) settings[key] = v;
   }
-  return { origin, b, settings: settings as Partial<Params> };
+  return { origin, b, mode, settings: settings as Partial<Params> };
 }
 
 function writeHash() {
@@ -374,6 +404,7 @@ function writeHash() {
     if (v !== DEFAULTS[key]) h += `&${k}=${typeof v === "boolean" ? +v : v}`;
   }
   if (comparing && pointB) h += "&p2=" + fmtPoint(pointB);
+  if (comparing && compareMode === "diff") h += "&m=diff";
   history.replaceState(null, "", h);
 }
 
@@ -383,9 +414,13 @@ let origin: Origin = initial?.origin ?? { lat: 52.0894, lon: 5.11, name: "Utrech
 Object.assign(params, initial?.settings);
 
 // vergelijken (fase 6.5): een tweede punt B; de kaart kleurt naar de langste van de twee reistijden
+// ("Voor ons allebei") of naar het verschil A − B ("Verschil")
 type Which = "a" | "b";
 let pointB: Origin | null = initial?.b ?? null;
 let comparing = pointB !== null;
+let compareMode: CompareMode = initial?.mode ?? "max";
+/** de kaart toont het verschil: alleen als B ook gekozen is */
+const diffShown = () => comparing && pointB !== null && compareMode === "diff";
 let editing: Which = comparing ? "b" : "a"; // het punt dat klikken, zoeken en de voorbeelden verplaatsen
 const pointName = (p: Origin) => p.name || `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
 /** de punten voor de worker: B alleen als het gekozen is */
@@ -417,6 +452,12 @@ function renderPoints() {
   $("originB").textContent = pointB ? pointName(pointB) : "kies een plek…";
   $("compare").hidden = comparing;
   $("compareNote").hidden = !comparing;
+  $("compareMode").hidden = !comparing;
+  for (const btn of $("compareMode").querySelectorAll("button")) btn.setAttribute("aria-pressed", String(btn.dataset.mode === compareMode));
+  $("compareNote").innerHTML = compareMode === "diff"
+    ? `<b>Verschil:</b> bruin is sneller vanaf A, petrol sneller vanaf B. Hoe donkerder, hoe groter het verschil. Grijs: minder dan ${DIFF_EDGES[0]} min.`
+    : "<b>Voor ons allebei:</b> de kleur is de langste van de twee reistijden. Groen is dus snel vanaf A én vanaf B.";
+  renderLegend();
   for (const [id, w] of [["rowA", "a"], ["rowB", "b"]] as const) {
     const row = $(id);
     row.classList.toggle("editing", comparing && editing === w);
@@ -447,6 +488,7 @@ function startCompare() {
 function stopCompare() {
   comparing = false;
   pointB = null;
+  compareMode = "max";
   editing = "a";
   writeHash();
   renderPoints();
@@ -592,8 +634,11 @@ function showResult(m: ResultMsg, fade: boolean) {
   crossfade(HEAT[heatFront], HEAT[back], fade);
   heatFront = back;
   shownId = m.id;
-  $("status").textContent =
-    `${m.reached.toLocaleString("nl")} haltes ${points().b ? "voor allebei " : ""}binnen ${params.tMaxMin / 60} uur · ` +
+  const nl = (v: number) => v.toLocaleString("nl");
+  const reached = m.split
+    ? `${nl(m.reached)} haltes binnen ${params.tMaxMin / 60} uur: A sneller bij ${nl(m.split[0])}, B bij ${nl(m.split[1])}`
+    : `${nl(m.reached)} haltes ${points().b ? "voor allebei " : ""}binnen ${params.tMaxMin / 60} uur`;
+  $("status").textContent = reached + " · " +
     `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms` +
     (params.realBike && !bikeLoaded ? " · fietsraster laden…" : "");
   $("bikeNote").textContent = m.bike ? "fietsen over de weg (OpenStreetMap)" : "fietsafstand hemelsbreed × 1,3";
@@ -666,13 +711,13 @@ function compute() {
   $("app").classList.add("loading");
   const id = ++computeId;
   requests.set(id, { kind: "view" });
-  send({ type: "compute", id, ...points(), params: { ...params } });
+  send({ type: "compute", id, ...points(), mode: compareMode, params: { ...params } });
 }
 /** een frame voor het afspelen: dezelfde instellingen, een andere vertrektijd */
 function requestFrame(min: number) {
   const id = ++computeId;
   requests.set(id, { kind: "frame", min, gen: playGen });
-  send({ type: "compute", id, ...points(), params: { ...params, departMin: min } });
+  send({ type: "compute", id, ...points(), mode: compareMode, params: { ...params, departMin: min } });
 }
 
 // ---------- reistijd onder de muis, reisinfo na een klik of tik ----------
@@ -721,9 +766,10 @@ function explainHtml(m: Extract<Response, { type: "explain" }>): string {
     if (p.minutes === null) return `<div class="tt-total">Niet bereikbaar</div><div class="tt-sub">${within}</div>`;
     return `<div class="tt-total">${fmtMin(p.minutes)}</div>${legsHtml(p)}`;
   }
-  // vergelijken: de langste van de twee (dat is de kleur), daarna elke reis apart
+  // vergelijken: de langste van de twee of het verschil (dat is de kleur), daarna elke reis apart
   const mins = m.parts.map((p) => p.minutes);
-  const head = mins.every((v) => v !== null)
+  const head = diffShown() ? `<div class="tt-total">${diffText(mins)}</div><div class="tt-sub">${diffSub(mins)}</div>`
+    : mins.every((v) => v !== null)
     ? `<div class="tt-total">${fmtMin(Math.max(...(mins as number[])))}</div><div class="tt-sub">voor jullie allebei (de langste reis)</div>`
     : `<div class="tt-total">Niet voor allebei</div><div class="tt-sub">bereikbaar ${within}</div>`;
   return head + m.parts.map((p, i) => {
@@ -734,12 +780,26 @@ function explainHtml(m: Extract<Response, { type: "explain" }>): string {
   }).join("");
 }
 
+/** stand "Verschil": wie is er sneller, en hoeveel (een reis die niet binnen de kleurschaal past: null) */
+function diffText([a, b]: (number | null)[]): string {
+  if (a === null && b === null) return "Niet bereikbaar";
+  if (a === null || b === null) return `Alleen vanaf ${a === null ? "B" : "A"}`;
+  const d = a - b;
+  return Math.abs(d) < 0.5 ? "Even snel" : `${fmtMin(Math.abs(d))} sneller vanaf ${d < 0 ? "A" : "B"}`;
+}
+function diffSub([a, b]: (number | null)[]): string {
+  if (a !== null && b !== null) return "verschil tussen de twee reizen";
+  return a === null && b === null ? `vanaf A en B niet binnen ${params.tMaxMin / 60} uur`
+    : `vanaf ${a === null ? "A" : "B"} niet binnen ${params.tMaxMin / 60} uur`;
+}
+
 /** kort label onder de muis: alleen de minuten */
 function hoverHtml(m: Extract<Response, { type: "explain" }>): string {
   const mins = m.parts.map((p) => p.minutes);
   const sub = `<div class="tt-sub">klik voor de route</div>`;
   if (mins.length === 1) return mins[0] === null ? `<div class="tt-sub">Niet bereikbaar</div>` : `<b>${fmtMin(mins[0])}</b>${sub}`;
   const each = mins.map((v, i) => `${"AB"[i]} ${v === null ? "–" : fmtMin(v)}`).join(" · ");
+  if (diffShown()) return `<b>${diffText(mins)}</b> <span class="tt-sub">${each}</span>${sub}`;
   return mins.every((v) => v !== null)
     ? `<b>${fmtMin(Math.max(...(mins as number[])))}</b> <span class="tt-sub">${each}</span>${sub}`
     : `<div class="tt-sub">Niet voor allebei · ${each}</div>`;
@@ -895,6 +955,16 @@ q.addEventListener("blur", () => setTimeout(() => showResults([]), 100));
 
 renderPoints();
 $("compare").addEventListener("click", startCompare);
+for (const btn of $("compareMode").querySelectorAll("button")) {
+  btn.addEventListener("click", () => {
+    const m = btn.dataset.mode as CompareMode;
+    if (m === compareMode) return;
+    compareMode = m;
+    renderPoints();
+    settingsChanged();
+    if (m === "diff") track("vergelijken-verschil");
+  });
+}
 $("compareOff").addEventListener("click", (e) => {
   e.stopPropagation(); // niet ook rij B kiezen
   stopCompare();
@@ -919,6 +989,7 @@ window.addEventListener("hashchange", () => {
   syncControls();
   pointB = h.b;
   comparing = pointB !== null;
+  compareMode = h.mode;
   editing = comparing ? "b" : "a";
   setOrigin(h.origin.lat, h.origin.lon, h.origin.name, "a");
   if (!fitBoth(true)) map.flyTo({ center: [h.origin.lon, h.origin.lat] });

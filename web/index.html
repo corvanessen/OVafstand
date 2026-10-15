@@ -62,9 +62,12 @@
             </div>
             <button id="compareOff" class="row-close" aria-label="Stop met vergelijken" title="Stop met vergelijken">×</button>
           </div>
-          <p class="compare-note" id="compareNote" hidden>
-            <b>Voor ons allebei:</b> de kleur is de langste van de twee reistijden. Groen is dus snel vanaf A én vanaf B.
-          </p>
+          <!-- vergelijken: de kleur is de langste van de twee reistijden, of het verschil A − B -->
+          <div class="compare-mode" id="compareMode" role="group" aria-label="Wat de kleur laat zien" hidden>
+            <button data-mode="max">Voor ons allebei</button>
+            <button data-mode="diff">Verschil</button>
+          </div>
+          <p class="compare-note" id="compareNote" hidden></p>
           <div class="actions">
             <button id="locate" class="small-btn" title="Vertrek vanaf je huidige locatie">⌖ Mijn locatie</button>
             <button id="compare" class="small-btn" title="Vergelijk met een tweede vertrekpunt">+ Vergelijk</button>
@@ -84,6 +87,7 @@
           <div class="legend-wrap">
             <div id="legend"></div>
             <div id="legendLabels"></div>
+            <div id="legendCaption" hidden><span>A sneller</span><span>even snel</span><span>B sneller</span></div>
           </div>
 
           <details id="settings">
@@ -129,7 +133,8 @@
               als je op een willekeurig moment bij de halte komt. Zo zie je hoe de kaart 's avonds en 's nachts krimpt.
               Met ▶ loopt de klok een werkdag door.</p>
             <p><b>Vergelijk</b> zet een tweede punt B op de kaart. Elke plek krijgt dan de kleur van de langste van de twee reistijden:
-              waar is het voor ons allebei dichtbij? Handig als je samen een woonplek zoekt en elk ergens anders werkt.</p>
+              waar is het voor ons allebei dichtbij? Handig als je samen een woonplek zoekt en elk ergens anders werkt.
+              Met <b>Verschil</b> zie je wie er sneller is, en hoeveel: bruin is sneller vanaf A, petrol sneller vanaf B.</p>
             <p><b>Beperkingen.</b> Zonder tijdstip rekent de kaart met een gewone werkdag overdag (07–19 u). Het weekend zit er niet in.
               Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
             <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.

@@ -2,7 +2,7 @@
 
 import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "./bikegrid";
 import { NX, NY, cellOf } from "./grid";
-import { colorize, rasterize, VIA_DIRECT, VIA_NONE, type Raster } from "./raster";
+import { colorize, colorizeDiff, rasterize, VIA_DIRECT, VIA_NONE, type Raster } from "./raster";
 import { loadGraph, loadHours, pathTo, search, straightAccess, type Graph, type Params, type Search, type Segment } from "./router";
 
 export interface Point {
@@ -10,10 +10,12 @@ export interface Point {
   lon: number;
 }
 
-// Met b (fase 6.5, vergelijken) is de reistijd per cel de langste van de twee: "voor ons allebei".
+// Met b (fase 6.5, vergelijken) kleurt de kaart per cel naar de langste van de twee ("max", voor ons allebei)
+// of naar het verschil A − B ("diff").
+export type CompareMode = "max" | "diff";
 export type Request =
   | { type: "init"; base: string }
-  | { type: "compute"; id: number; a: Point; b: Point | null; params: Params }
+  | { type: "compute"; id: number; a: Point; b: Point | null; mode: CompareMode; params: Params }
   | { type: "explain"; id: number; resultId: number; lat: number; lon: number }
   // diagram (fase 6.4): bereikbaar oppervlak binnen tMaxMin, voor één vertrektijd
   | { type: "profile"; gen: number; departMin: number; a: Point; b: Point | null; params: Params };
@@ -28,7 +30,9 @@ export interface Explained {
 export type Response =
   | { type: "ready"; date: string; nArea: number; ms: number; stations: Station[] }
   | { type: "bikeReady"; ok: boolean; ms: number; nNode: number }
-  | { type: "result"; id: number; bitmap: ImageBitmap; msRoute: number; msRaster: number; reached: number; bike: boolean }
+  // reached: haltes binnen tMax (bij "max" vanaf allebei); split: bij "diff" de haltes waar A en waar B sneller is
+  | { type: "result"; id: number; bitmap: ImageBitmap; msRoute: number; msRaster: number; reached: number;
+      split: [number, number] | null; bike: boolean }
   // parts: één reis per vertrekpunt (A, en bij vergelijken ook B)
   | { type: "explain"; id: number; parts: Explained[] }
   | { type: "profile"; gen: number; departMin: number; km2: number }
@@ -140,19 +144,29 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       const g = graph;
       const runs = (m.b ? [m.a, m.b] : [m.a]).map((pt) => cachedRun(g, pt, m.params));
       const t1 = performance.now();
-      const img = colorize(maxTime(runs), m.params.tMaxMin);
+      const diff = m.mode === "diff" && runs.length === 2;
+      const img = diff ? colorizeDiff(runs[0].r.time, runs[1].r.time, m.params.tMaxMin) : colorize(maxTime(runs), m.params.tMaxMin);
       const canvas = new OffscreenCanvas(NX, NY);
       canvas.getContext("2d")!.putImageData(img, 0, 0);
       const bitmap = canvas.transferToImageBitmap();
       const t2 = performance.now();
       results.set(m.id, runs);
       for (const id of results.keys()) if (results.size > KEEP) results.delete(id);
-      // haltes die vanaf elk punt binnen de kleurschaal liggen
+      // haltes die vanaf elk punt binnen de kleurschaal liggen; bij "diff": vanaf minstens één, en wie er sneller is
       const tMax = m.params.tMaxMin * 60;
       let reached = 0;
-      for (let a = 0; a < g.nArea; a++) if (runs.every(({ s }) => s.dist[a] < tMax)) reached++;
+      const split: [number, number] | null = diff ? [0, 0] : null;
+      for (let a = 0; a < g.nArea; a++) {
+        if (split) {
+          const da = runs[0].s.dist[a], db = runs[1].s.dist[a];
+          if (Math.min(da, db) >= tMax) continue;
+          reached++;
+          if (da < db) split[0]++;
+          else if (db < da) split[1]++;
+        } else if (runs.every(({ s }) => s.dist[a] < tMax)) reached++;
+      }
       const sum = (k: "msRoute" | "msRaster") => runs.reduce((t, r) => t + r[k], 0);
-      post({ type: "result", id: m.id, bitmap, msRoute: sum("msRoute"), msRaster: sum("msRaster") + t2 - t1, reached,
+      post({ type: "result", id: m.id, bitmap, msRoute: sum("msRoute"), msRaster: sum("msRaster") + t2 - t1, reached, split,
         bike: runs[0].useBike }, [bitmap]);
     } else if (m.type === "profile" && graph) {
       const p = { ...m.params, departMin: m.departMin };
