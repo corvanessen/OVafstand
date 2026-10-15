@@ -153,6 +153,8 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 
 .time-row { margin-top: 12px; }
 .time-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.time-toggle[hidden] { display: none; }
+#timetableRow { margin-top: 4px; }
 .time-ctl { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .time-ctl[hidden] { display: none; }
 .time-ctl input { flex: 1; accent-color: var(--accent); }

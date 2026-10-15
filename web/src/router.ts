@@ -37,6 +37,7 @@ export interface DayInfo {
   date: string;
   file: string | null; // cost + kind van deze dag; null = de basisdag in graph.bin
   hours: string | null;
+  conn?: { file: string; nTrip: number; nStop: number }; // dienstregeling (fase 4), conn_<datum>.bin.gz
 }
 interface DayData {
   cost: Uint16Array;
@@ -59,6 +60,8 @@ export interface Params {
   // null = een gemiddelde dag 07–19 u met waitFactor
   departMin: number | null;
   day: Day; // werkdag, zaterdag of zondag (de worker kiest daarmee de arrays van de graaf)
+  // met departMin: rekenen met de echte vertrektijden (CSA, csa.ts) in plaats van het uurmodel
+  timetable: boolean;
 }
 
 export const DETOUR = 1.3; // hemelsbreed -> over de weg

@@ -98,7 +98,7 @@ function median(xs: number[]) {
 
 const P: Params = {
   waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: false,
-  departMin: null, bikeStart: true, bikeEnd: false, day: "wd",
+  departMin: null, bikeStart: true, bikeEnd: false, day: "wd", timetable: false,
 };
 
 const PLACES: [string, number, number][] = [
@@ -106,7 +106,7 @@ const PLACES: [string, number, number][] = [
   ["Ruinen", 52.7625, 6.3536],
   ["Maastricht", 50.8497, 5.7053],
 ];
-const TARGETS = ["Amsterdam Centraal", "Rotterdam Centraal", "Groningen", "Maastricht", "Zwolle"];
+const TARGETS = ["Amsterdam Centraal", "Rotterdam Centraal", "Groningen", "Maastricht", "Zwolle"]; // precies deze namen
 
 async function main() {
   let t = performance.now();
@@ -118,7 +118,7 @@ async function main() {
   console.log(`laden: ${(performance.now() - t).toFixed(0)} ms, ${c.n.toLocaleString("nl")} connections, ${fp.to.length.toLocaleString("nl")} loopkanten`);
   const arrival = new Float64Array(g.nArea);
   const inTrip = new Uint8Array(c.nTrip);
-  const idx = (name: string) => g.areaNames.findIndex((n) => n === name || n.startsWith(name));
+  const idx = (name: string) => g.areaNames.indexOf(name);
   const tMax = P.tMaxMin * 60;
 
   // controle zonder fiets: vanaf de halteplek Utrecht Centraal, elk kwartier tussen 08:00 en 09:00

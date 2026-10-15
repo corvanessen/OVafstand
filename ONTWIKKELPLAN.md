@@ -249,7 +249,8 @@ Fase 3, realistisch fietsen:
 - ~~6.7 stap 1: het paneel inklappen en de reisinfo vastzetten na een klik.~~ Klaar, zie "Resultaten fase 6.7, stap 1".
 - ~~6.5 deel 2 ("Verschil") en de rest van 6.7.~~ Klaar, zie de resultaten van 6.5 deel 2 en 6.7 stap 2–4.
 - ~~Fase 4 en 5 verkennen: grootte, rekentijd, feeds.~~ Klaar, zie "Verkenning fase 4 en 5".
-- **Nu:** fase 4, stap 1: connections per rit in een bestand voor de browser, met CSA in de worker als derde stand naast "gemiddelde dag" en "uurmodel". Daarnaast bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
+- ~~Fase 4, stap 1: CSA in de worker als derde stand.~~ Klaar, zie "Resultaten fase 4, stap 1".
+- **Nu:** fase 4, stap 2 (zie daar). Daarnaast bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -963,11 +964,13 @@ CSA is dus 3–5 × sneller dan de huidige Dijkstra. Ook de mediaan over 12 vert
 | Amsterdam C | 27 | 34 | 33 | 35 | 28 | 35 |
 | Rotterdam C | 37 | 41 | 41 | 40 | 48 | 45 |
 | Zwolle | 54 | 62 | 62 | 71 | 64 | 66 |
-| Groningen | 120 | 137 | 140 | 153 | 146 | 148 |
+| Groningen | 111 | 123 | 123 | 132 | 125 | 127 |
+| Maastricht | 112 | 122 | 121 | 120 | 133 | 130 |
 | haltes binnen 1 uur | 11.612 | 5.014 | 4.841 | 5.159 | 4.910 | 4.427 |
 
-- **Controle.** Vanaf de halteplek Utrecht Centraal, zonder fiets, kom je in Groningen aan om :03 en :33. Bij vertrek om 08:15 of 08:45 is dat 138 min, om 08:00 of 08:30 153 min. Amsterdam C kost 30–35 min.
-- **A+ is optimistisch voor lange reizen met een overstap** (Groningen 137 tegen 148). Het telt een gemiddelde wachttijd per instap, maar geen aansluitingen die net gemist worden. Voor korte, frequente verbindingen komen A+ en CSA overeen.
+- **Correctie (fase 4, 15 okt).** Een eerdere versie van deze tabel gaf Groningen 120–153 min. De benchmark zocht de bestemming op het begin van de naam en vond "Groningen, Eikenlaan", een bushalte. Met de exacte naam geeft model A weer precies de validatie (111 en 112). Ook de conclusie dat A+ optimistisch is voor lange reizen vervalt.
+- **Controle.** Vanaf de halteplek Utrecht Centraal, zonder fiets, is Groningen 117 min bij vertrek om 08:15 en 132 min om 08:00 (een directe IC van 111 min, plus wachten). Amsterdam C kost 30–35 min.
+- **De mediaan van CSA ligt dicht bij A+ en het uurmodel** (hooguit ±5–8 min), maar per vertrekmoment springt CSA 5–15 min.
 - **Op het platteland** (Ruinen) springt de CSA sterk per vertrekmoment (13.185 tegen 14.506 haltes binnen 3 uur, met 7 min verschil). De mediaan per frame is dus nodig, zoals het plan al zei.
 
 **Nog niet gemeten:** ritten van de vorige dag na middernacht, een overstaptijd en fietsen tussen haltes (ULTRA).
@@ -1026,3 +1029,55 @@ Ter controle telt het op de NL-feed zelf 2.099.140 connections.
    - Voor De Lijn en MIVB nu al toegang aanvragen. MIVB valt pas binnen de strook van 50 km (Brussel).
    - De Lijn rond de grens zit voor een groot deel al in de NL-feed.
    - Pas bij 50 km is het werk voor uint32 halteplek-indexen nodig.
+
+### Resultaten fase 4, stap 1: "Volgens de dienstregeling" (15 okt 2026)
+
+Op branch `fase4` (vanaf `verkenning-4-5`).
+
+**Pijplijn.** `export_web.py` schrijft per dag `conn_<datum>.bin.gz`, met per rit:
+- het begin, het aantal haltes en de route;
+- per halte de halteplek, de aankomst ten opzichte van het begin, de stilstand en de vlaggen (niet in- of uitstappen).
+
+| Dag | Ritten | Haltes | gzip |
+|---|---|---|---|
+| werkdag | 120.290 | 2.224.326 | 0,84 MB |
+| zaterdag | 89.342 | 1.584.811 | 0,54 MB |
+| zondag | 73.125 | 1.220.048 | 0,41 MB |
+
+- De stilstand is uint16: bij 3.932 haltes is die langer dan 255 s. De vertrektijd zelf als offset maakte het bestand 1,16 MB.
+- `graph.bin` en de bestanden van het uurmodel blijven byte voor byte gelijk; alleen `meta.json` krijgt `days[k].conn`.
+
+**Browser** (`csa.ts`):
+- **Laden.** `loadTimetable` laadt de dag pas als het vinkje aan staat, en sorteert met een counting sort per vertrekseconde.
+  - Werkdag: 2.138.690 connections. Dat is inclusief kopieën vóór 00:00 van de ritten na 24:00, als de nacht van dezelfde soort dag.
+  - In Node kost het laden 410 ms (zondag 230 ms). In het geheugen is het ±36 MB.
+- **Rekenen.** `csaSearch` doet 12 scans, elke 5 min van −15 tot +40 min rond het gekozen half uur. Dat is hetzelfde venster als het uurmodel.
+  - Per halteplek telt de onderste mediaan (de 6e van 12), en de scan die die gaf.
+  - Lopen gaat over de loopkanten van de graaf, ook in meer stappen; 0 min overstap.
+  - Een vertrek vóór 00:00 (bij 00:00 en 00:30) valt in de avond van dezelfde dag.
+- **Reisinfo.** `csaPath` rekent de scan van de mediaan voor die halteplek opnieuw (±10 ms) en leest de route terug: aankomst-connection, de instapconnection van die rit, en loopstukken. De wachttijd is het verschil tussen aankomst op de halte en vertrek van de rit.
+- **Worker.** `Params.timetable`. `prepareDay` laadt de dienstregeling, en zet `timetable` uit als die ontbreekt. Het diagram en het afspelen rekenen ook met CSA.
+- **UI.** Een vinkje "Volgens de dienstregeling" onder de tijdschuif, alleen zichtbaar met een vertrektijd. De voetregel krijgt "(dienstregeling)". De uitleg heeft een alinea erbij. Deellink `&r=1`, en GoatCounter telt `dienstregeling`.
+
+**Metingen** (vanaf Utrecht C met de fiets; tussen haakjes het uurmodel):
+
+| Vertrek | Rekentijd (Node, 12 scans) | Haltes binnen 1 uur | Amsterdam C | Rotterdam C | Zwolle | Groningen |
+|---|---|---|---|---|---|---|
+| werkdag 08:00 | 160 ms | 4.860 (4.841) | 31 (33) | 45 (41) | 61 (62) | 122 (123) |
+| werkdag 00:00 | 15 ms | 1.645 (1.680) | 35 (38) | 50 (96) | 66 (62) | – (123) |
+| werkdag 23:00 | 39 ms | 2.856 (2.998) | 35 (36) | 50 (45) | 61 (62) | 122 (123) |
+| zondag 08:00 | 79 ms | 2.339 (2.487) | 35 (37) | 50 (49) | 66 (61) | 127 (122) |
+
+- **Overdag** ligt CSA dicht bij het uurmodel.
+- **'s Nachts verschilt het.** Het uurmodel geeft om 00:00 Groningen in 123 min: de wachttijd geldt per corridor (Utrecht–Amersfoort heeft nachttreinen), maar de rijkant rekent alsof die rit doorgaat naar Groningen. CSA ziet dat er na de laatste IC niets meer gaat. Dit is precies de "Prijs" uit 6.4.
+- **Route naar Groningen om 08:00:** fiets 0,3 min naar Utrecht Centraal, Intercity 111 min met 10,7 min wachten (vertrek 08:40, de scan van de mediaan). Samen 122,0 min, gelijk aan de mediaan.
+- **In Chrome** (headless, dev-server):
+  - werkdag 08:00–17:00: netwerk 90–130 ms, kaart 150–260 ms; het uurmodel doet 35–55 ms. De eerste keer kost 460 ms extra, voor het laden.
+  - De reisinfo bij Nijkerk: "Fiets 1 min → Sprinter 33 min +10 wacht → Bus 142 4 min +1 wacht → Loop 10 min" = 59 min (het uurmodel: 1 u 06).
+  - Wisselen, zondag 23:00, afspelen (frames tot 03:30), de deellink `&r=1`: er waren geen consolefouten.
+
+**Volgende stap (fase 4, stap 2):**
+1. In de reisinfo de vertrektijd van de getoonde reis tonen ("vertrek 08:40"), zodat de wachttijd te plaatsen is.
+2. Kiezen of de dienstregeling de standaard wordt met een tijdstip. Ze is even snel als nodig en 's nachts eerlijker.
+3. Testen op een telefoon: het geheugen (±36 MB extra) en de laadtijd.
+4. Later: een overstaptijd als instelling, en fietsen tussen haltes bij een overstap (ULTRA).

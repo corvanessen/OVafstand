@@ -29,7 +29,7 @@ function track(event: string) {
 // ---------- instellingen ----------
 const DEFAULTS: Params = {
   waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true, departMin: null,
-  bikeStart: true, bikeEnd: false, day: "wd",
+  bikeStart: true, bikeEnd: false, day: "wd", timetable: false,
 };
 const params: Params = { ...DEFAULTS };
 let bikeLoaded = false; // het fietsraster komt na de graaf binnen
@@ -88,6 +88,7 @@ tMaxSel.addEventListener("change", () => {
 const timeOn = $<HTMLInputElement>("timeOn");
 const departSlider = $<HTMLInputElement>("departMin");
 const playBtn = $<HTMLButtonElement>("play");
+const timetableBox = $<HTMLInputElement>("timetable");
 const DEFAULT_DEPART = 8 * 60;
 const FRAME_STEP_MIN = 30;
 const FRAME_MS = 700; // minimale tijd per stap tijdens afspelen
@@ -130,6 +131,13 @@ departSlider.addEventListener("input", () => {
   settingsChanged();
 });
 playBtn.addEventListener("click", () => (playing ? stopPlaying() : startPlaying()));
+// fase 4: de echte vertrektijden (CSA) in plaats van het uurmodel
+timetableBox.addEventListener("change", () => {
+  params.timetable = timetableBox.checked;
+  if (params.timetable) track("dienstregeling");
+  syncTime();
+  settingsChanged();
+});
 
 function setPlaying(on: boolean) {
   playing = on;
@@ -291,11 +299,15 @@ function syncTime() {
   $("timeCtl").hidden = !on;
   $("timeRow").classList.toggle("active", on);
   if (on) departSlider.value = String(params.departMin);
+  timetableBox.checked = params.timetable;
+  $("timetableRow").hidden = !on;
   $("departOut").textContent = clock(on ? params.departMin! : +departSlider.value);
   // met een tijdstip telt altijd de echte wachttijd van dat uur
   for (const el of modelRadios) el.disabled = on;
   const day = DAY_NAME[params.day].toLowerCase();
-  $("dataWindow").textContent = on ? `${day}, vertrek ${clock(params.departMin!)}` : `${day}, 07–19 u`;
+  $("dataWindow").textContent = on
+    ? `${day}, vertrek ${clock(params.departMin!)}${params.timetable ? " (dienstregeling)" : ""}`
+    : `${day}, 07–19 u`;
   const d = dayDates.get(params.day);
   if (d) $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
   for (const btn of $("dayPick").querySelectorAll("button")) {
@@ -384,13 +396,13 @@ function renderDiffLegend() {
   }
 }
 
-// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&s=1&a=0&dag=za&k=ic&p2=lat,lon,naam&m=diff ----------
+// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&r=1&s=1&a=0&dag=za&k=ic&p2=lat,lon,naam&m=diff ----------
 // Alleen afwijkingen van de standaard komen in de link; onbekende of ongeldige waarden worden genegeerd.
 // p2 is punt B bij vergelijken (b is al de fietsgrens), m=diff de stand "Verschil",
 // k=ic de kaart naar het dichtstbijzijnde IC-station (het vertrekpunt blijft erin staan).
 const HASH_KEYS = {
   w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike", u: "departMin",
-  s: "bikeStart", a: "bikeEnd",
+  s: "bikeStart", a: "bikeEnd", r: "timetable",
 } as const;
 type HashParam = (typeof HASH_KEYS)[keyof typeof HASH_KEYS];
 type Origin = { lat: number; lon: number; name: string };
@@ -399,7 +411,7 @@ type Origin = { lat: number; lon: number; name: string };
 function parseSetting(key: HashParam, raw: string): number | boolean | null {
   const v = Number(raw);
   if (raw === "" || !Number.isFinite(v)) return null;
-  if (key === "realBike" || key === "bikeStart" || key === "bikeEnd") return v === 0 || v === 1 ? v === 1 : null;
+  if (key === "realBike" || key === "bikeStart" || key === "bikeEnd" || key === "timetable") return v === 0 || v === 1 ? v === 1 : null;
   if (key === "waitFactor") return modelRadios.some((r) => +r.value === v) ? v : null;
   if (key === "tMaxMin") return [...tMaxSel.options].some((o) => +o.value === v) ? v : null;
   const input = $<HTMLInputElement>(key);

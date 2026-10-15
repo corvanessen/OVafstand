@@ -92,6 +92,7 @@
               <input id="departMin" type="range" min="0" max="1410" step="30" aria-label="Vertrektijd" />
               <output id="departOut" class="clock">08:00</output>
             </div>
+            <label class="time-toggle" id="timetableRow" hidden title="Met de echte vertrektijden van die dag, in plaats van een gemiddelde wachttijd per half uur"><input id="timetable" type="checkbox" /> Volgens de dienstregeling</label>
             <div class="chart" id="chart" hidden></div>
           </div>
           <p class="hint" id="hint">Klik op de kaart of sleep de punt om het vertrekpunt te verplaatsen.</p>
@@ -148,6 +149,9 @@
             <p><b>Vertrek op een tijdstip</b> rekent per half uur met de echte vertrekken van die dag, ook de nachtlijnen: de gemiddelde wachttijd
               als je op een willekeurig moment bij de halte komt. Zo zie je hoe de kaart 's avonds en 's nachts krimpt.
               Met ▶ loopt de klok de hele dag door. Kies daarboven een werkdag, zaterdag of zondag.</p>
+            <p><b>Volgens de dienstregeling</b> rekent met elke rit op zijn echte tijd, dus ook met aansluitingen die je net mist.
+              De kaart toont de middelste reistijd van twaalf vertrekmomenten, om de vijf minuten rond het gekozen tijdstip.
+              De reisinfo toont de reis van zo'n vertrekmoment.</p>
             <p><b>Vergelijk</b> zet een tweede punt B op de kaart. Elke plek krijgt dan de kleur van de langste van de twee reistijden:
               waar is het voor ons allebei dichtbij? Handig als je samen een woonplek zoekt en elk ergens anders werkt.
               Met <b>Verschil</b> zie je wie er sneller is, en hoeveel: bruin is sneller vanaf A, petrol sneller vanaf B.</p>
