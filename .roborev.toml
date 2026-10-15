@@ -1,0 +1,3 @@
+# roborev: automatische codereview na elke commit (zie https://roborev.io)
+# Codex is hier niet geïnstalleerd; Claude Code wel.
+agent = "claude-code"
