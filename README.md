@@ -17,14 +17,27 @@ pipeline/            Python: GTFS → graaf → binaire bestanden voor de browse
   export_bike_grid.py  fietsraster → web/public/data/bike.bin.gz
   bike_check.py, bike_grid_test.py, bike_ferry_check.py, grid_bench.mjs   metingen uit fase 3
 web/                 Vite + TypeScript + MapLibre
-  src/router.ts      graph.bin laden, Dijkstra, route-uitleg
+  bench/check.ts     vaste controle in Node: npm run check (validatie, reisinfo-HTML)
+  bench/             verder: metingen in Node (CSA, geheugen), bundelen met rolldown
+  -- rekenkern (in de worker) --
+  src/worker.ts      Web Worker: laadt de data, rekent kaarten, legt routes uit
+  src/router.ts      graph.bin en de dagen laden, Dijkstra, route-uitleg
   src/csa.ts         dienstregeling (fase 4): conn_<datum>.bin.gz laden, CSA, route-uitleg
-  bench/             metingen in Node (CSA), bundelen met rolldown
   src/bikegrid.ts    bike.bin.gz laden, Dijkstra over het fietsraster
   src/raster.ts      fietskegels (hemelsbreed) → raster van 250 m, kleuren
   src/grid.ts        Web Mercator-raster dat precies op de kaart past
-  src/worker.ts      Web Worker, houdt graaf en laatste resultaat vast
-  src/main.ts        kaart, zoekbalk (PDOK), instellingen, label en reisinfo
+  -- pagina --
+  src/main.ts        kaart, punten A en B, verkeer met de worker, label en reisinfo
+  src/state.ts       de toestand: params (instellingen), punten, soort kaart
+  src/hash.ts        deellink lezen en schrijven
+  src/controls.ts    instellingen, dag en vertrektijd in het paneel
+  src/playback.ts    de dag afspelen (frames vooruit)
+  src/chart.ts       diagram "Binnen 1 uur bereikbaar"
+  src/legend.ts      legenda
+  src/explain.ts     reisinfo als HTML (zonder DOM, getest in check.ts)
+  src/search.ts      zoekbalk (stations uit de graaf + PDOK, geocode.ts)
+  src/sheet.ts       bottom sheet op de telefoon, paneel inklappen op de desktop
+  src/ui.ts, format.ts   hulpjes: elementen, meldingen, tellen; tijden en tekst opmaken
 data/                (niet in versiebeheer) ruwe en tussentijdse data
 ```
 
