@@ -250,7 +250,8 @@ Fase 3, realistisch fietsen:
 - ~~6.5 deel 2 ("Verschil") en de rest van 6.7.~~ Klaar, zie de resultaten van 6.5 deel 2 en 6.7 stap 2–4.
 - ~~Fase 4 en 5 verkennen: grootte, rekentijd, feeds.~~ Klaar, zie "Verkenning fase 4 en 5".
 - ~~Fase 4, stap 1: CSA in de worker als derde stand.~~ Klaar, zie "Resultaten fase 4, stap 1".
-- **Nu:** fase 4, stap 2 (zie daar). Daarnaast bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
+- ~~Fase 4, stap 2: de keuze duidelijk maken.~~ Klaar, zie "Resultaten fase 4, stap 2".
+- **Nu:** fase 4, stap 3 (zie daar). Daarnaast bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -1076,8 +1077,23 @@ Op branch `fase4` (vanaf `verkenning-4-5`).
   - De reisinfo bij Nijkerk: "Fiets 1 min → Sprinter 33 min +10 wacht → Bus 142 4 min +1 wacht → Loop 10 min" = 59 min (het uurmodel: 1 u 06).
   - Wisselen, zondag 23:00, afspelen (frames tot 03:30), de deellink `&r=1`: er waren geen consolefouten.
 
-**Volgende stap (fase 4, stap 2):**
-1. In de reisinfo de vertrektijd van de getoonde reis tonen ("vertrek 08:40"), zodat de wachttijd te plaatsen is.
-2. Kiezen of de dienstregeling de standaard wordt met een tijdstip. Ze is even snel als nodig en 's nachts eerlijker.
-3. Testen op een telefoon: het geheugen (±36 MB extra) en de laadtijd.
-4. Later: een overstaptijd als instelling, en fietsen tussen haltes bij een overstap (ULTRA).
+### Resultaten fase 4, stap 2: duidelijk voor bezoekers (15 okt 2026)
+
+Het vinkje "Volgens de dienstregeling" bleek niet te begrijpen. Het klonk alsof de kaart zonder vinkje níet met de dienstregeling rekent. Het venster van twaalf vertrekken was ook nergens te zien. De keuze blijft (gebruiker, 15 okt 2026), maar is anders gebracht:
+- **Twee knoppen** onder de schuif: "Gemiddelde wachttijd" en "Echte vertrektijden" (dezelfde stijl als Werkdag / Zaterdag / Zondag).
+- **Een regel onder de knoppen** die meeschuift met de klok:
+  - "Bij elke overstap telt de gemiddelde wachttijd tussen 07:45 en 08:45."
+  - "Je vertrekt 12 keer, om de 5 min tussen 07:45 en 08:40. Elke plek toont de middelste reistijd."
+- **Kloktijden in de reisinfo** bij echte vertrektijden:
+  - onder het totaal: "middelste van 12 reizen: vertrek 08:40, aankomst 09:39";
+  - per rit: "08:51 Utrecht Centraal → 09:24 Nijkerk".
+  - Op de IC-kaart (de route andersom) staan geen kloktijden.
+- **De voetregel** zegt "werkdag, vertrek 08:00, echte vertrektijden" of "…, gemiddelde wachttijd".
+- **De uitleg** beschrijft beide manieren in gewone woorden, met een voorbeeld (elke 10 min een trein = 5 min wachten), en zegt waarom echte vertrektijden iets strenger zijn.
+- **Getest** in headless Chrome: wisselen, de deellink `&r=1` en de reisinfo (de tijden tellen op: 08:40 + 1 fiets + 10 wacht = 08:51). Er waren geen consolefouten.
+
+**Ook gemeten** (`web/bench/coverage.ts`, vanaf Utrecht C, km² binnen 3 uur): de gemiddelde dag 35.142 km² met de fiets bij aankomst, 22.068 lopend. Het uurmodel geeft 34.637 en 21.360, echte vertrektijden 32.392 en 19.556. Dat de kaart kleiner oogt dan vroeger, komt vooral door "Fiets bij aankomst" (standaard uit sinds 6.7 stap 2, −37%). Echte vertrektijden halen er nog 6–8% af.
+
+**Volgende stap (fase 4, stap 3):**
+1. Testen op een telefoon: het geheugen (±36 MB extra), de laadtijd en de twee knoppen in de bottom sheet.
+2. Later: een overstaptijd als instelling, en fietsen tussen haltes bij een overstap (ULTRA).

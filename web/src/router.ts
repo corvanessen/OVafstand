@@ -320,7 +320,8 @@ export function search(g: Graph, init: Float64Array, p: Params): Search {
 export type Segment =
   | { kind: "bike"; minutes: number; to: string }
   | { kind: "walk"; minutes: number; from: string; to: string }
-  | { kind: "ride"; route: Route; from: string; to: string; wait: number; minutes: number };
+  // dep/arr: kloktijden (s na middernacht), alleen met echte vertrektijden (csaPath)
+  | { kind: "ride"; route: Route; from: string; to: string; wait: number; minutes: number; dep?: number; arr?: number };
 
 /** Route naar halteplek `area` uit de zoekboom, als lijst segmenten (zonder de laatste fietsrit). */
 export function pathTo(g: Graph, s: Search, area: number): Segment[] {

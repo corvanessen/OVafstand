@@ -29,6 +29,8 @@ export interface Explained {
   minutes: number | null;
   segments: Segment[];
   lastBike: number;
+  // met echte vertrektijden: wanneer deze reis vertrekt (kloktijd in s, één van de scans rond de vertrektijd)
+  leave?: number;
 }
 
 export type Response =
@@ -159,8 +161,10 @@ function explainRun(g: Graph, { s, r, csa }: Run, c: number): Explained {
   if (via === VIA_NONE) return { minutes: null, segments: [], lastBike: 0 };
   const minutes = r.time[c];
   if (via === VIA_DIRECT) return { minutes, segments: [], lastBike: minutes };
-  const segments = csa ? csaPath(g, csa.tt, walks!, csa.run, via) : pathTo(g, s, via);
-  return { minutes, segments, lastBike: minutes - s.dist[via] / 60 };
+  const lastBike = minutes - s.dist[via] / 60;
+  if (!csa) return { minutes, segments: pathTo(g, s, via), lastBike };
+  const { segments, t0 } = csaPath(g, csa.tt, walks!, csa.run, via);
+  return { minutes, segments, lastBike, leave: t0 };
 }
 
 /** De dag van een opdracht laden (werkdag, zaterdag, zondag), met het uurmodel als er een vertrektijd is,

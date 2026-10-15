@@ -88,7 +88,7 @@ tMaxSel.addEventListener("change", () => {
 const timeOn = $<HTMLInputElement>("timeOn");
 const departSlider = $<HTMLInputElement>("departMin");
 const playBtn = $<HTMLButtonElement>("play");
-const timetableBox = $<HTMLInputElement>("timetable");
+const ttButtons = [...$("ttPick").querySelectorAll<HTMLButtonElement>("button")];
 const DEFAULT_DEPART = 8 * 60;
 const FRAME_STEP_MIN = 30;
 const FRAME_MS = 700; // minimale tijd per stap tijdens afspelen
@@ -103,6 +103,16 @@ let playTimer = 0;
 
 const clock = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 const nextMin = (min: number, k = 1) => (min + k * FRAME_STEP_MIN) % 1440;
+/** kloktijd van seconden na middernacht (ook na 24:00, bij ritten in de nacht) */
+const clockSec = (sec: number) => clock(Math.round(sec / 60) % 1440);
+/** welk venster de kaart gebruikt: het uurmodel middelt over een uur rond het half uur, de dienstregeling
+ *  neemt 12 vertrekken van 15 min ervoor tot 40 min erna (CSA_RUNS in csa.ts) */
+function timeNote(min: number): string {
+  const at = (d: number) => clock((min + d + 1440) % 1440);
+  return params.timetable
+    ? `Je vertrekt 12 keer, om de 5 min tussen ${at(-15)} en ${at(40)}. Elke plek toont de middelste reistijd.`
+    : `Bij elke overstap telt de gemiddelde wachttijd tussen ${at(-15)} en ${at(45)}.`;
+}
 
 // ---------- dag: werkdag, zaterdag of zondag (fase 6.7 stap 4) ----------
 const DAY_NAME: Record<Day, string> = { wd: "Werkdag", za: "Zaterdag", zo: "Zondag" };
@@ -131,13 +141,17 @@ departSlider.addEventListener("input", () => {
   settingsChanged();
 });
 playBtn.addEventListener("click", () => (playing ? stopPlaying() : startPlaying()));
-// fase 4: de echte vertrektijden (CSA) in plaats van het uurmodel
-timetableBox.addEventListener("change", () => {
-  params.timetable = timetableBox.checked;
-  if (params.timetable) track("dienstregeling");
-  syncTime();
-  settingsChanged();
-});
+// fase 4: gemiddelde wachttijd (uurmodel) of echte vertrektijden (CSA)
+for (const btn of ttButtons) {
+  btn.addEventListener("click", () => {
+    const on = btn.dataset.tt === "1";
+    if (on === params.timetable) return;
+    params.timetable = on;
+    if (on) track("dienstregeling");
+    syncTime();
+    settingsChanged();
+  });
+}
 
 function setPlaying(on: boolean) {
   playing = on;
@@ -299,14 +313,15 @@ function syncTime() {
   $("timeCtl").hidden = !on;
   $("timeRow").classList.toggle("active", on);
   if (on) departSlider.value = String(params.departMin);
-  timetableBox.checked = params.timetable;
-  $("timetableRow").hidden = !on;
+  $("ttPick").hidden = $("timeNote").hidden = !on;
+  for (const btn of ttButtons) btn.setAttribute("aria-pressed", String((btn.dataset.tt === "1") === params.timetable));
+  if (on) $("timeNote").textContent = timeNote(params.departMin!);
   $("departOut").textContent = clock(on ? params.departMin! : +departSlider.value);
   // met een tijdstip telt altijd de echte wachttijd van dat uur
   for (const el of modelRadios) el.disabled = on;
   const day = DAY_NAME[params.day].toLowerCase();
   $("dataWindow").textContent = on
-    ? `${day}, vertrek ${clock(params.departMin!)}${params.timetable ? " (dienstregeling)" : ""}`
+    ? `${day}, vertrek ${clock(params.departMin!)}, ${params.timetable ? "echte vertrektijden" : "gemiddelde wachttijd"}`
     : `${day}, 07–19 u`;
   const d = dayDates.get(params.day);
   if (d) $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
@@ -866,7 +881,7 @@ function explainHtml(m: Extract<Response, { type: "explain" }>): string {
       return `<div class="tt-total">Niet bereikbaar</div><div class="tt-sub">${within}${source === "ic" ? " van een IC-station" : ""}</div>`;
     }
     if (source === "ic") return icHtml(p);
-    return `<div class="tt-total">${fmtMin(p.minutes)}</div>${legsHtml(p)}`;
+    return `<div class="tt-total">${fmtMin(p.minutes)}</div>${leaveHtml(p)}${legsHtml(p)}`;
   }
   // vergelijken: de langste van de twee of het verschil (dat is de kleur), daarna elke reis apart
   const mins = m.parts.map((p) => p.minutes);
@@ -878,7 +893,7 @@ function explainHtml(m: Extract<Response, { type: "explain" }>): string {
     const tag = `<span class="tag ${"ab"[i]}">${"AB"[i]}</span>`;
     return p.minutes === null
       ? `<div class="tt-part">${tag} niet bereikbaar</div>`
-      : `<div class="tt-part">${tag} ${fmtMin(p.minutes)}</div>${legsHtml(p)}`;
+      : `<div class="tt-part">${tag} ${fmtMin(p.minutes)}</div>${leaveHtml(p)}${legsHtml(p)}`;
   }).join("");
 }
 
@@ -917,14 +932,22 @@ function icHtml(m: Explained): string {
   const rows = [leg(params.bikeStart, m.lastBike, esc(rest.length ? rest[rest.length - 1].to : first.to))];
   for (const s of rest.reverse()) {
     if (s.kind === "walk") { if (s.minutes >= 0.5) rows.push(`<li class="walk">Loop ${fmtMin(s.minutes)} naar ${esc(s.from)}</li>`); }
-    else if (s.kind === "ride") rows.push(rideRow({ ...s, from: s.to, to: s.from }));
+    else if (s.kind === "ride") rows.push(rideRow({ ...s, from: s.to, to: s.from, dep: undefined, arr: undefined }));
   }
   return `<div class="tt-total">${fmtMin(m.minutes!)}</div><div class="tt-sub">naar IC-station ${esc(first.to)}</div>` +
     `<ol class="legs">${rows.join("")}</ol>`;
 }
 function rideRow(s: Extract<Segment, { kind: "ride" }>) {
   const wait = s.wait >= 0.5 ? ` <span class="wait">+${Math.round(s.wait)} wacht</span>` : "";
-  return `<li class="ride t${s.route[1]}">${routeLabel(s)} ${fmtMin(s.minutes)}${wait}<br><small>${esc(s.from)} → ${esc(s.to)}</small></li>`;
+  // met echte vertrektijden staan de kloktijden erbij
+  const at = (t: number | undefined) => (t === undefined ? "" : clockSec(t) + " ");
+  return `<li class="ride t${s.route[1]}">${routeLabel(s)} ${fmtMin(s.minutes)}${wait}<br><small>${at(s.dep)}${esc(s.from)} → ${at(s.arr)}${esc(s.to)}</small></li>`;
+}
+
+/** met echte vertrektijden: wanneer deze reis vertrekt en aankomt (één van de 12 vertrekken rond het tijdstip) */
+function leaveHtml(m: Explained): string {
+  if (m.leave === undefined || m.minutes === null) return "";
+  return `<div class="tt-sub">middelste van 12 reizen: vertrek ${clockSec(m.leave)}, aankomst ${clockSec(m.leave + m.minutes * 60)}</div>`;
 }
 
 /** de etappes van één reis, met het laatste stuk fietsen of lopen */

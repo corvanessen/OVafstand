@@ -66,10 +66,11 @@ De bron is de complete NL-dienstregeling in GTFS-formaat (NDOV Loket / OVapi, ±
 
 Waarom standaard geen dienstregelingsalgoritme zoals CSA of RAPTOR? Een statische graaf geeft één tijdloos antwoord, is klein genoeg voor de browser en klopt goed met de NS-reistijden.
 
-**Volgens de dienstregeling** (fase 4, [csa.ts](web/src/csa.ts)): met een vertrektijd en dit vinkje rekent de worker met elke rit op zijn echte tijd. Dat gebeurt met het *Connection Scan Algorithm*, met 0 min overstap.
-- `conn_<datum>.bin.gz` bewaart per rit de halteplekken en de tijden (0,4–0,8 MB per dag). De browser laadt het pas als het vinkje aangaat, en zet het met een counting sort om in ±2,1 mln connections, gesorteerd op vertrektijd.
+**Echte vertrektijden** (fase 4, [csa.ts](web/src/csa.ts)): met een vertrektijd kies je tussen "Gemiddelde wachttijd" (het uurmodel) en "Echte vertrektijden". Bij de tweede rekent de worker met elke rit op zijn echte tijd. Dat gebeurt met het *Connection Scan Algorithm*, met 0 min overstap.
+- `conn_<datum>.bin.gz` bewaart per rit de halteplekken en de tijden (0,4–0,8 MB per dag). De browser laadt het pas als je die keuze maakt, en zet het met een counting sort om in ±2,1 mln connections, gesorteerd op vertrektijd.
 - De kaart toont per halteplek de mediaan van 12 scans: elke 5 min, van 15 min vóór tot 40 min na het gekozen half uur. Dat is hetzelfde venster als het uurmodel. Eén scan kost ±6–12 ms, de kaart samen ±100 ms.
-- De reisinfo rekent de scan van de mediaan voor die halteplek opnieuw uit en leest de route terug.
+- De reisinfo rekent de scan van de mediaan voor die halteplek opnieuw uit en leest de route terug, met kloktijden ("middelste van 12 reizen: vertrek 08:40, aankomst 09:39").
+- Onder de schuif zegt een regel welk venster geldt.
 - Ritten na middernacht tellen ook vroeg in de nacht, als de nacht van dezelfde soort dag.
 
 ### 3. De laatste kilometer: fietsen over een raster
@@ -164,7 +165,7 @@ Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.1
 | `t` | kleurschaal tot (min) | 180 |
 | `f` | fietsen over de weg (1) of hemelsbreed × 1,3 (0) | 1 |
 | `u` | vertrektijd in minuten na middernacht (uurmodel), stappen van 30 | geen: gemiddelde werkdag 07–19 u |
-| `r` | met `u`: volgens de dienstregeling (1) of het uurmodel (0) | 0 |
+| `r` | met `u`: echte vertrektijden (1) of gemiddelde wachttijd (0) | 0 |
 | `s` | fiets bij vertrek (1) of lopen (0) | 1 |
 | `a` | fiets bij aankomst (1) of lopen (0) | 0 |
 | `p2` | punt B bij vergelijken: `lat,lon,naam` (naam URL-gecodeerd) | geen: één vertrekpunt |

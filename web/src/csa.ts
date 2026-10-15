@@ -232,8 +232,8 @@ export function csaSearch(g: Graph, tt: Timetable, fp: Footpaths, init: Float64A
   return { s: { dist, pred: new Int32Array(0) }, csa: { init, t0s, pick, tMax } };
 }
 
-/** de route naar halteplek area, uit de scan die voor die halteplek de mediaan gaf */
-export function csaPath(g: Graph, tt: Timetable, fp: Footpaths, run: CsaRun, area: number): Segment[] {
+/** de route naar halteplek area, uit de scan die voor die halteplek de mediaan gaf; t0 = de vertrektijd van die scan */
+export function csaPath(g: Graph, tt: Timetable, fp: Footpaths, run: CsaRun, area: number): { segments: Segment[]; t0: number } {
   const t0 = run.t0s[run.pick[area]];
   const sc = newScan(g, tt);
   scan(g, tt, fp, run.init, t0, run.tMax, sc);
@@ -254,6 +254,8 @@ export function csaPath(g: Graph, tt: Timetable, fp: Footpaths, run: CsaRun, are
         to: name(a),
         wait: min(tt.dep[b] - arrival[u]),
         minutes: min(tt.arr[c] - tt.dep[b]),
+        dep: tt.dep[b],
+        arr: tt.arr[c],
       });
       a = u;
     } else if (inWalk[a] >= 0) {
@@ -265,5 +267,5 @@ export function csaPath(g: Graph, tt: Timetable, fp: Footpaths, run: CsaRun, are
       break;
     }
   }
-  return segs.reverse();
+  return { segments: segs.reverse(), t0 };
 }
