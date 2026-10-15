@@ -28,14 +28,16 @@
       <aside id="panel">
         <!-- alleen op een smal scherm: greep van de sheet (tikken of vegen) -->
         <button id="grip" class="grip" aria-label="Paneel groter of kleiner maken"></button>
-        <!-- alleen op een smal scherm: reisinfo na tikken op de kaart -->
-        <section id="info" hidden></section>
         <header>
           <div>
             <h1>OV-afstand</h1>
             <p class="sub">Hoe lang ben je met trein, bus en fiets onderweg naar elke plek in Nederland?</p>
           </div>
+          <!-- alleen op de desktop: het paneel in- en uitklappen -->
+          <button id="fold" class="fold" aria-expanded="true" title="Paneel inklappen">«</button>
         </header>
+        <!-- reisinfo na een klik of tik op de kaart -->
+        <section id="info" hidden></section>
 
         <div class="body">
           <div class="search">
@@ -44,15 +46,28 @@
           </div>
           <div class="chips" id="chips"></div>
 
-          <div class="origin-row">
+          <!-- bij vergelijken kies je met een klik op de rij welk punt de kaart verplaatst -->
+          <div class="origin-row" id="rowA" tabindex="-1">
             <span class="dot"></span>
             <div>
-              <div class="label">Vertrekpunt</div>
+              <div class="label" id="originLabel">Vertrekpunt</div>
               <div id="origin">…</div>
             </div>
           </div>
+          <div class="origin-row" id="rowB" tabindex="0" role="button" hidden>
+            <span class="dot b"></span>
+            <div>
+              <div class="label">Punt B</div>
+              <div id="originB">…</div>
+            </div>
+            <button id="compareOff" class="row-close" aria-label="Stop met vergelijken" title="Stop met vergelijken">×</button>
+          </div>
+          <p class="compare-note" id="compareNote" hidden>
+            <b>Voor ons allebei:</b> de kleur is de langste van de twee reistijden. Groen is dus snel vanaf A én vanaf B.
+          </p>
           <div class="actions">
             <button id="locate" class="small-btn" title="Vertrek vanaf je huidige locatie">⌖ Mijn locatie</button>
+            <button id="compare" class="small-btn" title="Vergelijk met een tweede vertrekpunt">+ Vergelijk</button>
             <button id="share" class="small-btn" title="Deel een link naar deze kaart, met je instellingen">↗ Delen</button>
           </div>
           <div class="time-row" id="timeRow">
@@ -105,7 +120,7 @@
           <details id="about">
             <summary>Hoe werkt dit?</summary>
             <p>Elke kleur is een kwartier reistijd, van groen (dichtbij) naar paars. Zonder kleur: niet bereikbaar binnen de kleurschaal.
-              Beweeg over de kaart (of tik erop) voor de reistijd en de route.</p>
+              Beweeg over de kaart voor de reistijd. Klik of tik voor de route, met een knop om daarvandaan te vertrekken.</p>
             <p>Een reis is: fietsen naar een halte, met trein, bus, tram, metro of veerboot verder, en het laatste stuk weer fietsen.
               Of de hele reis fietsen, als dat sneller is. Het fietsen gaat over echte wegen en fietspaden uit OpenStreetMap.</p>
             <p><b>Realistisch</b> telt bij elke instap de helft van de tijd tussen twee vertrekken als wachttijd (hooguit 30 min).
@@ -113,6 +128,8 @@
             <p><b>Vertrek op een tijdstip</b> rekent per half uur met de echte vertrekken van die dag, ook de nachtlijnen: de gemiddelde wachttijd
               als je op een willekeurig moment bij de halte komt. Zo zie je hoe de kaart 's avonds en 's nachts krimpt.
               Met ▶ loopt de klok een werkdag door.</p>
+            <p><b>Vergelijk</b> zet een tweede punt B op de kaart. Elke plek krijgt dan de kleur van de langste van de twee reistijden:
+              waar is het voor ons allebei dichtbij? Handig als je samen een woonplek zoekt en elk ergens anders werkt.</p>
             <p><b>Beperkingen.</b> Zonder tijdstip rekent de kaart met een gewone werkdag overdag (07–19 u). Het weekend zit er niet in.
               Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
             <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.

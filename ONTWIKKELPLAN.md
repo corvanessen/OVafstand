@@ -245,7 +245,9 @@ Fase 3, realistisch fietsen:
 - ~~6.4 deel 1: het uurmodel en een tijdschuif met afspelen.~~ Klaar, zie "Resultaten fase 6.4, deel 1".
 - ~~Nachtlijnen en halve uren in het uurmodel.~~ Klaar, zie "Resultaten fase 6.4: nachtlijnen en halve uren".
 - ~~6.4 deel 2: frames vooruit rekenen, overgang, diagram.~~ Klaar, zie "Resultaten fase 6.4, deel 2".
-- **Nu:** twee vertrekpunten vergelijken (6.5). Eerst de open vraag beantwoorden: welke vergelijking eerst. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
+- ~~6.5 deel 1: twee vertrekpunten vergelijken, "Voor ons allebei".~~ Klaar, zie "Resultaten fase 6.5, deel 1".
+- ~~6.7 stap 1: het paneel inklappen en de reisinfo vastzetten na een klik.~~ Klaar, zie "Resultaten fase 6.7, stap 1".
+- **Nu:** de stand "Verschil" (A − B, tweekleurig rond 0) met een schakelaar en `&m=diff`. Daarna de rest van 6.7 in de volgorde daar. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -550,9 +552,9 @@ Technisch is het steeds hetzelfde: twee Dijkstra-runs, twee rasters met minuten 
 - De rekentijd is ±300 ms als één punt verandert en ±600 ms als beide veranderen.
 
 **Open vragen:**
-- Welke vraag komt eerst?
-- Ook drie of meer punten? Dan werkt max nog, het verschil niet.
-- Combineren met de animatie? Pas na 6.4.
+- ~~Welke vraag komt eerst?~~ max(A, B), onder de naam **"Voor ons allebei"**. De stand A − B heet straks **"Verschil"**. "Allebei snel" en "Wie is dichterbij" klonken vreemd (gebruiker, 15 okt 2026).
+- ~~Ook drie of meer punten?~~ Nee, alleen twee (gebruiker, 15 okt 2026).
+- ~~Combineren met de animatie?~~ Ja, dat kan (gebruiker, 15 okt 2026).
 
 ### Resultaten fase 6.1: snelle winst (14 okt 2026)
 
@@ -774,6 +776,57 @@ Ook op branch `fase6-nacht`.
 De zaagtand is de gemiddelde afwijking van een half uur ten opzichte van het gemiddelde van zijn buren, in % van het oppervlak. Vertrek op :00/:30 en op :15/:45 geeft nu vrijwel dezelfde kromme.
 
 **Prijs.** Overgangen worden ±30 min uitgesmeerd. Een voorbeeld vanaf Utrecht C om 00:00: Rotterdam kost nu 99 min, was 48, want het venster valt al deels in het nachtgat. Het precieze minuutverschil per vertrektijd hoort bij fase 4 (een echte dienstregelingsrouter, met de mediaan over meerdere vertrekmomenten per frame).
+
+### Resultaten fase 6.5, deel 1: "Voor ons allebei" (15 okt 2026)
+
+Op branch `fase6-vergelijk`, vanaf `fase6-nacht`.
+- **Bediening.**
+  - Een knop "+ Vergelijk" opent een rij voor punt B. Met × op die rij stop je met vergelijken.
+  - Klikken, zoeken, de voorbeeldchips en "Mijn locatie" verplaatsen het punt waarvan de rij omlijnd is. Na "+ Vergelijk" is dat B. Klik op rij A of B om te wisselen, of sleep een markering.
+  - De markeringen dragen de letters A (donker) en B (petrol). Na het kiezen van een punt komen beide in beeld.
+  - Een korte uitleg onder de rijen: "de kleur is de langste van de twee reistijden".
+- **Kaart.** Per cel de langste van de twee reistijden, met dezelfde kleurschaal. De statusregel telt de haltes "voor allebei binnen 3 uur".
+- **Tooltip en reisinfo.** Bovenaan de langste reistijd ("voor jullie allebei"), daaronder de route van A en die van B, elk met een letter. Op de telefoon heet de knop "Punt B hierheen".
+- **Rekenen.** De worker rekent A en B apart en bewaart de laatste vier runs (`cachedRun`, op vertrekpunt plus instellingen). Bij een nieuwe B rekent hij alleen B: gemeten netwerk ±100 ms, kaart ±400 ms, net als met één punt. Als beide punten nieuw zijn (een gedeelde link), kost het ±900 ms.
+- **Met de tijdschuif.** Afspelen en het diagram werken ook met twee punten. Het diagram heet dan "Voor allebei binnen 1 uur" en rekent twee keer zo lang.
+- **Deellink** `&p2=lat,lon,naam`. De kaart opent met beide punten in beeld.
+- **Getest** in headless Chrome:
+  - B kiezen via zoeken;
+  - de tooltip: Ermelo vanuit Utrecht C en Zwolle kost 54 en 53 min;
+  - afspelen, het diagram, de deellink en stoppen met vergelijken;
+  - een telefoon (390 px): de ingeklapte sheet en de reisinfo na een tik.
+
+  Alles werkt, zonder consolefouten.
+
+### 6.7 Nieuwe ideeën (15 okt 2026)
+
+Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4.
+
+1. **Rustiger op de desktop.** Hover toont alleen een klein label met de minuten. Een klik zet de reisinfo vast bovenaan het paneel, met een knop "Vertrek vanaf hier", net als tikken op de telefoon. Het paneel is in te klappen. Klaar, zie hieronder.
+2. **Fiets bij vertrek en bij aankomst als schakelaars.** Niet iedereen heeft aan beide kanten een fiets. Staat een schakelaar uit, dan loop je dat stuk (±5 km/u, kortere grens), over hetzelfde fietsraster met een andere snelheid. Dat is een benadering, want voetpaden waar je niet mag fietsen ontbreken. **Standaard: fiets bij aankomst uit** (keuze van de gebruiker). Dat is realistischer, maar de kaart wordt op het platteland merkbaar donkerder en oude deellinks geven een ander beeld. Nieuwe sleutels in de deellink.
+3. **Kaart van de slechtste bereikbaarheid.** Er zijn drie smaken:
+   - de reistijd naar het dichtstbijzijnde centrum;
+   - de reistijd naar een voorziening (ziekenhuis, hoger onderwijs);
+   - het aantal inwoners binnen 45 min, vooraf berekend per halte, met het CBS-bevolkingsraster.
+
+   **Eerst het centrum.** Dat is één Dijkstra-run met alle centra tegelijk als start (grote steden, provinciehoofdsteden of IC-stations; nog kiezen), dus ±0,5 s in de browser zonder voorbereiding. Let op: dat is de reistijd *vanaf* het centrum. Het netwerk is niet precies symmetrisch, maar dat is te verwaarlozen.
+4. **Zaterdag en zondag.** `extract_day.py` voor een zaterdag en een zondag, met de uurbestanden naast die van de werkdag. Lijnen die alleen in het weekend rijden komen in de graaf, zoals de nachtlijnen (instapkant dicht in het werkdagmodel). In de app een keuze werkdag/za/zo, met een sleutel in de deellink. Elke dag kost ±0,6 MB extra.
+
+### Resultaten fase 6.7, stap 1: inklappen en vaste reisinfo (15 okt 2026)
+
+Op branch `fase6-vergelijk`.
+- **Hover** toont alleen de minuten en "klik voor de route". Bij vergelijken is dat de langste reistijd plus "A … · B …".
+- **Klikken** (muis en touch) zet de reisinfo vast in `#info`, onder de titel bovenaan het paneel, met een markering op de kaart. Het vertrekpunt verplaatsen gaat met de knop "Vertrek vanaf hier" of door de punt te slepen. De MapLibre-popup is weg.
+- **De reisinfo rekent mee.** Na elke nieuwe kaart (tijdschuif, afspelen, instellingen) vraagt hij de route opnieuw op. De worker krijgt hooguit één uitlegverzoek tegelijk, en de reisinfo gaat voor het hoverlabel.
+- **Sluiten** gaat met × of met Esc.
+- **Inklappen** (alleen op de desktop) gebeurt met « rechtsboven in het paneel. Wat blijft: de titel, de reisinfo, de vertrekpunten, de tijdschuif als die aan staat en de legenda, in 280 px breed. De stand wordt onthouden in localStorage. `fitBoth` houdt rekening met de breedte van het paneel.
+- **Getest** in headless Chrome:
+  - het label en de reisinfo geven op dezelfde plek dezelfde tijd;
+  - de reisinfo werkt bij met de tijdschuif;
+  - inklappen, Esc en "Vertrek vanaf hier" werken;
+  - op de telefoon (390 px) komt de reisinfo in de half open sheet, en de inklapknop is daar verborgen.
+
+  Alles werkt, zonder consolefouten.
 
 ### 6.6 Volgorde
 

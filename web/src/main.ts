@@ -1,17 +1,18 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
-import { ImageSource, Map as MlMap, Marker, NavigationControl, Popup, ScaleControl, setWorkerUrl } from "maplibre-gl";
+import { ImageSource, Map as MlMap, Marker, NavigationControl, ScaleControl, setWorkerUrl } from "maplibre-gl";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { LayerSpecification } from "maplibre-gl";
 import { geocode, type Place } from "./geocode";
 import { CORNERS, cellOf } from "./grid";
 import { BAND_MIN, bandColor } from "./raster";
 import type { Params, Segment } from "./router";
-import type { Request, Response, Station } from "./worker";
+import type { Explained, Request, Response, Station } from "./worker";
 
 setWorkerUrl(maplibreWorkerUrl);
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const narrow = matchMedia("(max-width: 640px)"); // smal scherm: het paneel is een sheet onderaan
 
 // ---------- bezoekers tellen (GoatCounter, zonder cookies; zie index.html) ----------
 // Alleen het soort gebeurtenis, nooit coördinaten of adressen. count.js telt niet op localhost
@@ -168,7 +169,7 @@ let profileKey = "";
 
 /** na elke wijziging: opnieuw beginnen als het vertrekpunt of het fietsen anders is */
 function checkProfile() {
-  const key = JSON.stringify([origin.lat, origin.lon, params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
+  const key = JSON.stringify([points(), params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
     params.realBike && bikeLoaded]);
   if (key !== profileKey) {
     profileKey = key;
@@ -184,7 +185,7 @@ function pumpProfile() {
   if (params.departMin === null || profileBusy || profileNext >= profile.length) return;
   if (!workerReady || busy || framesAsked.size > 0) return; // de kaart en het afspelen gaan voor
   profileBusy = true;
-  send({ type: "profile", gen: profileGen, departMin: profileNext++ * FRAME_STEP_MIN, lat: origin.lat, lon: origin.lon,
+  send({ type: "profile", gen: profileGen, departMin: profileNext++ * FRAME_STEP_MIN, ...points(),
     params: { ...params, tMaxMin: PROFILE_MIN } });
 }
 function onProfile(m: Extract<Response, { type: "profile" }>) {
@@ -212,6 +213,7 @@ const chartNow = chartSvg.querySelector("line")!;
 function renderChart() {
   chartEl.hidden = params.departMin === null;
   if (chartEl.hidden) return;
+  chartEl.querySelector("span")!.textContent = points().b ? "Voor allebei binnen 1 uur" : "Binnen 1 uur bereikbaar";
   const n = profile.length;
   let max = 1;
   for (const v of profile) if (v > max) max = v;
@@ -314,8 +316,9 @@ function renderLegend() {
   }
 }
 
-// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480 ----------
+// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&p2=lat,lon,naam ----------
 // Alleen afwijkingen van de standaard komen in de link; onbekende of ongeldige waarden worden genegeerd.
+// p2 is punt B bij vergelijken (b is al de fietsgrens).
 const HASH_KEYS = {
   w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike", u: "departMin",
 } as const;
@@ -334,31 +337,43 @@ function parseSetting(key: HashParam, raw: string): number | boolean | null {
   return v >= +input.min && v <= +input.max && Math.abs(steps - Math.round(steps)) < 1e-6 ? v : null;
 }
 
-function readHash(): { origin: Origin; settings: Partial<Params> } | null {
-  // de naam is URL-gecodeerd en bevat dus geen &; daarna volgen de instellingen
-  const m = /^#([-\d.]+),([-\d.]+)(?:,([^&]*))?(.*)$/.exec(location.hash);
+/** "lat,lon,naam" (de naam URL-gecodeerd, dus zonder & of ,) */
+function parsePoint(s: string): Origin | null {
+  const m = /^([-\d.]+),([-\d.]+)(?:,(.*))?$/.exec(s);
   if (!m || !Number.isFinite(+m[1]) || !Number.isFinite(+m[2])) return null;
   let name = "";
   try {
     name = m[3] ? decodeURIComponent(m[3]) : "";
   } catch { /* kapotte codering: zonder naam verder */ }
+  return { lat: +m[1], lon: +m[2], name };
+}
+const fmtPoint = ({ lat, lon, name }: Origin) =>
+  `${lat.toFixed(5)},${lon.toFixed(5)}${name ? "," + encodeURIComponent(name) : ""}`;
+
+function readHash(): { origin: Origin; b: Origin | null; settings: Partial<Params> } | null {
+  // het vertrekpunt staat vooraan; daarna volgen de instellingen, elk na een &
+  const [head, ...rest] = location.hash.slice(1).split("&");
+  const origin = parsePoint(head);
+  if (!origin) return null;
   const settings: Record<string, number | boolean> = {};
-  for (const part of m[4].split("&")) {
+  let b: Origin | null = null;
+  for (const part of rest) {
     const [k, raw] = part.split("=");
+    if (k === "p2" && raw !== undefined) b = parsePoint(raw);
     const key = HASH_KEYS[k as keyof typeof HASH_KEYS];
     const v = key && raw !== undefined ? parseSetting(key, raw) : null;
     if (v !== null) settings[key] = v;
   }
-  return { origin: { lat: +m[1], lon: +m[2], name }, settings: settings as Partial<Params> };
+  return { origin, b, settings: settings as Partial<Params> };
 }
 
 function writeHash() {
-  const { lat, lon, name } = origin;
-  let h = `#${lat.toFixed(5)},${lon.toFixed(5)}${name ? "," + encodeURIComponent(name) : ""}`;
+  let h = "#" + fmtPoint(origin);
   for (const [k, key] of Object.entries(HASH_KEYS)) {
     const v = params[key];
     if (v !== DEFAULTS[key]) h += `&${k}=${typeof v === "boolean" ? +v : v}`;
   }
+  if (comparing && pointB) h += "&p2=" + fmtPoint(pointB);
   history.replaceState(null, "", h);
 }
 
@@ -366,24 +381,92 @@ function writeHash() {
 const initial = readHash();
 let origin: Origin = initial?.origin ?? { lat: 52.0894, lon: 5.11, name: "Utrecht Centraal" };
 Object.assign(params, initial?.settings);
+
+// vergelijken (fase 6.5): een tweede punt B; de kaart kleurt naar de langste van de twee reistijden
+type Which = "a" | "b";
+let pointB: Origin | null = initial?.b ?? null;
+let comparing = pointB !== null;
+let editing: Which = comparing ? "b" : "a"; // het punt dat klikken, zoeken en de voorbeelden verplaatsen
+const pointName = (p: Origin) => p.name || `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
+/** de punten voor de worker: B alleen als het gekozen is */
+const points = () => ({
+  a: { lat: origin.lat, lon: origin.lon },
+  b: comparing && pointB ? { lat: pointB.lat, lon: pointB.lon } : null,
+});
 syncControls();
 
-function setOrigin(lat: number, lon: number, name = "") {
-  origin = { lat, lon, name };
-  marker.setLngLat([lon, lat]);
+function setOrigin(lat: number, lon: number, name = "", which = editing) {
+  if (which === "b") pointB = { lat, lon, name };
+  else origin = { lat, lon, name };
   writeHash();
-  $("origin").textContent = name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-  popup.remove();
+  renderPoints();
   hideInfo();
+  scheduleCompute();
+  afterChange();
+}
+
+const HINT = matchMedia("(pointer: coarse)").matches
+  ? "Tik op de kaart voor de reistijd en de route. Sleep de punt om het vertrekpunt te verplaatsen."
+  : "Klik op de kaart voor de route, of sleep de punt om het vertrekpunt te verplaatsen.";
+
+/** namen, markeringen en knoppen van A en B bijwerken */
+function renderPoints() {
+  $("origin").textContent = pointName(origin);
+  $("originLabel").textContent = comparing ? "Punt A" : "Vertrekpunt";
+  $("rowB").hidden = !comparing;
+  $("originB").textContent = pointB ? pointName(pointB) : "kies een plek…";
+  $("compare").hidden = comparing;
+  $("compareNote").hidden = !comparing;
+  for (const [id, w] of [["rowA", "a"], ["rowB", "b"]] as const) {
+    const row = $(id);
+    row.classList.toggle("editing", comparing && editing === w);
+    row.classList.toggle("pickable", comparing);
+    row.setAttribute("aria-pressed", String(comparing && editing === w));
+    row.tabIndex = comparing ? 0 : -1;
+    row.setAttribute("role", comparing ? "button" : "group");
+  }
+  markerEl.textContent = comparing ? "A" : "";
+  markerEl.classList.toggle("lettered", comparing);
+  marker.setLngLat([origin.lon, origin.lat]);
+  if (comparing && pointB) markerB.setLngLat([pointB.lon, pointB.lat]).addTo(map);
+  else markerB.remove();
+  $("hint").textContent = !comparing ? HINT
+    : !pointB ? "Klik op de kaart of zoek een plek voor punt B."
+    : `Klik op de kaart om punt ${editing.toUpperCase()} te verplaatsen. Kies hierboven welk punt.`;
+}
+
+function startCompare() {
+  comparing = true;
+  editing = "b";
+  track("vergelijken-gestart");
+  renderPoints();
+  // op een telefoon geen toetsenbord over de kaart: zoeken of tikken mag allebei
+  if (narrow.matches) setSheet("half");
+  else $("q").focus();
+}
+function stopCompare() {
+  comparing = false;
+  pointB = null;
+  editing = "a";
+  writeHash();
+  renderPoints();
   scheduleCompute();
   afterChange();
 }
 
 /** naar een plek vliegen en daar vertrekken (zoeken, voorbeelden, mijn locatie) */
 function goTo(lat: number, lon: number, name = "", zoom = 8.5) {
-  map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), zoom) });
   setOrigin(lat, lon, name);
+  if (!fitBoth(true)) map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), zoom) });
   if (narrow.matches) setSheet("collapsed"); // de kaart is nu het belangrijkst
+}
+/** bij vergelijken A en B allebei in beeld, op de desktop naast het paneel; false zonder B */
+function fitBoth(animate: boolean): boolean {
+  if (!comparing || !pointB) return false;
+  const pad = narrow.matches ? 40 : { top: 60, bottom: 60, right: 60, left: $("panel").offsetWidth + 60 };
+  map.fitBounds([[Math.min(origin.lon, pointB.lon), Math.min(origin.lat, pointB.lat)],
+    [Math.max(origin.lon, pointB.lon), Math.max(origin.lat, pointB.lat)]], { padding: pad, maxZoom: 11, animate });
+  return true;
 }
 
 
@@ -401,6 +484,7 @@ const map = new MlMap({
   attributionControl: { compact: true, customAttribution: "OV-data: NDOV Loket / OVapi" },
 });
 map.addControl(new NavigationControl({ showCompass: false }), "top-right");
+fitBoth(false); // een gedeelde link met punt B
 map.addControl(new ScaleControl({ unit: "metric" }), "bottom-right");
 
 const markerEl = document.createElement("div");
@@ -408,11 +492,20 @@ markerEl.className = "origin-marker";
 const marker = new Marker({ element: markerEl, draggable: true }).setLngLat([origin.lon, origin.lat]).addTo(map);
 marker.on("dragend", () => {
   const p = marker.getLngLat();
-  setOrigin(p.lat, p.lng);
+  if (comparing) editing = "a";
+  setOrigin(p.lat, p.lng, "", "a");
   track("vertrekpunt-slepen");
 });
-
-const popup = new Popup({ closeButton: true, maxWidth: "320px", className: "route-popup" });
+const markerBEl = document.createElement("div");
+markerBEl.className = "origin-marker lettered b";
+markerBEl.textContent = "B";
+const markerB = new Marker({ element: markerBEl, draggable: true }).setLngLat([0, 0]);
+markerB.on("dragend", () => {
+  const p = markerB.getLngLat();
+  editing = "b";
+  setOrigin(p.lat, p.lng, "", "b");
+  track("vertrekpunt-slepen");
+});
 
 map.on("load", () => {
   const layers = map.getStyle().layers;
@@ -500,12 +593,14 @@ function showResult(m: ResultMsg, fade: boolean) {
   heatFront = back;
   shownId = m.id;
   $("status").textContent =
-    `${m.reached.toLocaleString("nl")} haltes binnen ${params.tMaxMin / 60} uur · ` +
+    `${m.reached.toLocaleString("nl")} haltes ${points().b ? "voor allebei " : ""}binnen ${params.tMaxMin / 60} uur · ` +
     `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms` +
     (params.realBike && !bikeLoaded ? " · fietsraster laden…" : "");
   $("bikeNote").textContent = m.bike ? "fietsen over de weg (OpenStreetMap)" : "fietsafstand hemelsbreed × 1,3";
   hasResult = true;
-  explainSent = null; // het beeld is anders: de tooltip opnieuw laten uitrekenen
+  // het beeld is anders: het label en de vastgezette reisinfo opnieuw laten uitrekenen
+  hoverSent = null;
+  if (pinAt) pinPending = true;
   flushExplain();
 }
 
@@ -546,7 +641,7 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
     onExplain(m);
   } else if (m.type === "error") {
     busy = false;
-    explainBusy = false;
+    explainBusy = null;
     $("status").textContent = "Fout: " + m.message;
   }
 };
@@ -571,35 +666,41 @@ function compute() {
   $("app").classList.add("loading");
   const id = ++computeId;
   requests.set(id, { kind: "view" });
-  send({ type: "compute", id, lat: origin.lat, lon: origin.lon, params: { ...params } });
+  send({ type: "compute", id, ...points(), params: { ...params } });
 }
 /** een frame voor het afspelen: dezelfde instellingen, een andere vertrektijd */
 function requestFrame(min: number) {
   const id = ++computeId;
   requests.set(id, { kind: "frame", min, gen: playGen });
-  send({ type: "compute", id, lat: origin.lat, lon: origin.lon, params: { ...params, departMin: min } });
+  send({ type: "compute", id, ...points(), params: { ...params, departMin: min } });
 }
 
-// ---------- reistijd onder de muis / bij tikken ----------
+// ---------- reistijd onder de muis, reisinfo na een klik of tik ----------
+// Hover toont een klein label met de minuten. Een klik of tik zet de route vast in het paneel,
+// met een knop om daarvandaan te vertrekken. Die reisinfo rekent mee als het beeld verandert.
 const tooltip = $("tooltip");
+type LatLon = { lat: number; lon: number };
 let explainId = 0;
-type ExplainTarget = { lat: number; lon: number; via: "hover" | "popup" };
-let explainTarget: ExplainTarget | null = null;
-let explainBusy = false;
+let hoverAt: LatLon | null = null; // de laatste muispositie
+let hoverSent: LatLon | null = null; // de positie waarvoor het label al is gevraagd
+let pinAt: LatLon | null = null; // de vastgezette plek (null: geen reisinfo)
+let pinPending = false;
+let explainBusy: "hover" | "pin" | null = null;
 
-let explainSent: ExplainTarget | null = null;
-
-function requestExplain(lat: number, lon: number, via: "hover" | "popup") {
-  explainTarget = { lat, lon, via };
-  flushExplain();
-}
-
-/** hooguit één verzoek tegelijk; tussentijdse muisposities worden overgeslagen */
+/** hooguit één verzoek tegelijk; de reisinfo gaat voor, tussentijdse muisposities worden overgeslagen */
 function flushExplain() {
-  if (explainBusy || !hasResult || !explainTarget || explainTarget === explainSent) return;
-  explainBusy = true;
-  explainSent = explainTarget;
-  send({ type: "explain", id: ++explainId, resultId: shownId, lat: explainTarget.lat, lon: explainTarget.lon });
+  if (explainBusy || !hasResult) return;
+  let at: LatLon;
+  if (pinPending && pinAt) {
+    pinPending = false;
+    explainBusy = "pin";
+    at = pinAt;
+  } else if (hoverAt && hoverAt !== hoverSent) {
+    hoverSent = hoverAt;
+    explainBusy = "hover";
+    at = hoverAt;
+  } else return;
+  send({ type: "explain", id: ++explainId, resultId: shownId, lat: at.lat, lon: at.lon });
 }
 
 const MODE: Record<number, string> = { 0: "Tram", 1: "Metro", 2: "Trein", 3: "Bus", 4: "Veerboot", 7: "Kabelbaan" };
@@ -614,7 +715,38 @@ function routeLabel(seg: Extract<Segment, { kind: "ride" }>) {
 }
 
 function explainHtml(m: Extract<Response, { type: "explain" }>): string {
-  if (m.minutes === null) return `<div class="tt-total">Niet bereikbaar</div><div class="tt-sub">binnen ${params.tMaxMin / 60} uur</div>`;
+  const within = `binnen ${params.tMaxMin / 60} uur`;
+  if (m.parts.length === 1) {
+    const p = m.parts[0];
+    if (p.minutes === null) return `<div class="tt-total">Niet bereikbaar</div><div class="tt-sub">${within}</div>`;
+    return `<div class="tt-total">${fmtMin(p.minutes)}</div>${legsHtml(p)}`;
+  }
+  // vergelijken: de langste van de twee (dat is de kleur), daarna elke reis apart
+  const mins = m.parts.map((p) => p.minutes);
+  const head = mins.every((v) => v !== null)
+    ? `<div class="tt-total">${fmtMin(Math.max(...(mins as number[])))}</div><div class="tt-sub">voor jullie allebei (de langste reis)</div>`
+    : `<div class="tt-total">Niet voor allebei</div><div class="tt-sub">bereikbaar ${within}</div>`;
+  return head + m.parts.map((p, i) => {
+    const tag = `<span class="tag ${"ab"[i]}">${"AB"[i]}</span>`;
+    return p.minutes === null
+      ? `<div class="tt-part">${tag} niet bereikbaar</div>`
+      : `<div class="tt-part">${tag} ${fmtMin(p.minutes)}</div>${legsHtml(p)}`;
+  }).join("");
+}
+
+/** kort label onder de muis: alleen de minuten */
+function hoverHtml(m: Extract<Response, { type: "explain" }>): string {
+  const mins = m.parts.map((p) => p.minutes);
+  const sub = `<div class="tt-sub">klik voor de route</div>`;
+  if (mins.length === 1) return mins[0] === null ? `<div class="tt-sub">Niet bereikbaar</div>` : `<b>${fmtMin(mins[0])}</b>${sub}`;
+  const each = mins.map((v, i) => `${"AB"[i]} ${v === null ? "–" : fmtMin(v)}`).join(" · ");
+  return mins.every((v) => v !== null)
+    ? `<b>${fmtMin(Math.max(...(mins as number[])))}</b> <span class="tt-sub">${each}</span>${sub}`
+    : `<div class="tt-sub">Niet voor allebei · ${each}</div>`;
+}
+
+/** de etappes van één reis, met het laatste stuk fietsen */
+function legsHtml(m: Explained): string {
   const rows: string[] = [];
   for (const s of m.segments) {
     if (s.kind === "bike") { if (s.minutes >= 0.5) rows.push(`<li class="bike">Fiets ${fmtMin(s.minutes)} naar ${esc(s.to)}</li>`); }
@@ -625,44 +757,36 @@ function explainHtml(m: Extract<Response, { type: "explain" }>): string {
     }
   }
   rows.push(`<li class="bike">Fiets ${fmtMin(m.lastBike)} naar bestemming</li>`);
-  return `<div class="tt-total">${fmtMin(m.minutes)}</div><ol class="legs">${rows.join("")}</ol>`;
+  return `<ol class="legs">${rows.join("")}</ol>`;
 }
 
-let lastPopupLngLat: [number, number] = [0, 0];
-
 function onExplain(m: Extract<Response, { type: "explain" }>) {
-  explainBusy = false;
-  const t = explainSent;
-  if (explainTarget !== explainSent) {
-    flushExplain(); // er is intussen een nieuwere positie
-    if (explainTarget?.via === "hover") return;
-  }
-  if (t?.via === "hover") {
-    if (lastPointerType === "touch") return;
-    tooltip.innerHTML = explainHtml(m);
+  const via = explainBusy;
+  explainBusy = null;
+  if (via === "hover" && hoverAt === hoverSent && lastPointerType !== "touch") {
+    tooltip.innerHTML = hoverHtml(m);
     tooltip.hidden = false;
     placeTooltip(); // de grootte kan veranderd zijn
-  } else if (t?.via === "popup") {
+  } else if (via === "pin" && pinAt && !pinPending) {
+    const at = pinAt;
     const box = document.createElement("div");
     box.innerHTML = explainHtml(m);
     const btn = document.createElement("button");
     btn.className = "btn";
-    btn.textContent = "Vertrek vanaf hier";
+    btn.textContent = comparing ? `Punt ${editing.toUpperCase()} hierheen` : "Vertrek vanaf hier";
     btn.onclick = () => {
-      setOrigin(lastPopupLngLat[1], lastPopupLngLat[0]);
-      track("vertrekpunt-tik");
+      setOrigin(at.lat, at.lon);
+      track("vertrekpunt-klik");
       if (narrow.matches) setSheet("collapsed");
     };
     box.append(btn);
-    // op een smal scherm valt een popup aan de rand buiten beeld: de reisinfo gaat in de sheet
-    if (narrow.matches) showInfo(box, lastPopupLngLat);
-    else popup.setLngLat(lastPopupLngLat).setDOMContent(box).addTo(map);
-    explainTarget = null;
+    showInfo(box, [at.lon, at.lat]);
   }
+  flushExplain();
 }
 
 // na een tik stuurt de browser een nagebootste mousemove; die mag geen hover-tooltip
-// openen, anders staat dezelfde reisinformatie dubbel in beeld (tooltip én popup)
+// openen, anders staat er een label onder de vinger
 let lastPointerType = "mouse";
 map.getCanvasContainer().addEventListener("pointerdown", (ev) => (lastPointerType = ev.pointerType), true);
 map.getCanvasContainer().addEventListener("pointermove", (ev) => (lastPointerType = ev.pointerType), true);
@@ -686,18 +810,19 @@ map.on("mousemove", (e) => {
   }
   tooltipAt = [e.point.x, e.point.y];
   placeTooltip();
-  requestExplain(e.lngLat.lat, e.lngLat.lng, "hover");
+  hoverAt = { lat: e.lngLat.lat, lon: e.lngLat.lng };
+  flushExplain();
 });
 map.getCanvas().addEventListener("mouseleave", () => (tooltip.hidden = true));
 map.on("click", (e) => {
-  if ((e.originalEvent as PointerEvent).pointerType === "touch") {
-    // op een touchscreen: tik = reistijd bekijken, met een knop om daarvandaan te vertrekken
-    lastPopupLngLat = [e.lngLat.lng, e.lngLat.lat];
-    requestExplain(e.lngLat.lat, e.lngLat.lng, "popup");
-  } else {
-    setOrigin(e.lngLat.lat, e.lngLat.lng);
-    track("vertrekpunt-klik");
-  }
+  // klik of tik = de reisinfo vastzetten, met een knop om daarvandaan te vertrekken
+  pinAt = { lat: e.lngLat.lat, lon: e.lngLat.lng };
+  pinPending = true;
+  flushExplain();
+  track("reisinfo-klik");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.activeElement !== q) hideInfo();
 });
 
 // ---------- zoeken ----------
@@ -768,15 +893,35 @@ q.addEventListener("keydown", (e) => {
 });
 q.addEventListener("blur", () => setTimeout(() => showResults([]), 100));
 
-$("origin").textContent = origin.name || `${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`;
+renderPoints();
+$("compare").addEventListener("click", startCompare);
+$("compareOff").addEventListener("click", (e) => {
+  e.stopPropagation(); // niet ook rij B kiezen
+  stopCompare();
+});
+// bij vergelijken: klik op een rij om te kiezen welk punt de kaart verplaatst
+for (const [id, w] of [["rowA", "a"], ["rowB", "b"]] as const) {
+  const row = $(id);
+  const pick = () => {
+    if (!comparing) return;
+    editing = w;
+    renderPoints();
+  };
+  row.addEventListener("click", pick);
+  row.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), pick()));
+}
+
 // een andere hash (zelf getypt of een geplakte deellink): ontbrekende instellingen worden de standaard
 window.addEventListener("hashchange", () => {
   const h = readHash();
   if (!h) return;
   Object.assign(params, DEFAULTS, h.settings);
   syncControls();
-  setOrigin(h.origin.lat, h.origin.lon, h.origin.name);
-  map.flyTo({ center: [h.origin.lon, h.origin.lat] });
+  pointB = h.b;
+  comparing = pointB !== null;
+  editing = comparing ? "b" : "a";
+  setOrigin(h.origin.lat, h.origin.lon, h.origin.name, "a");
+  if (!fitBoth(true)) map.flyTo({ center: [h.origin.lon, h.origin.lat] });
 });
 for (const id of ["settings", "about"]) {
   const d = $<HTMLDetailsElement>(id);
@@ -787,7 +932,6 @@ for (const id of ["settings", "about"]) {
 // Drie standen: ingeklapt (vertrekpunt en legenda), half (zoeken, voorbeelden, delen, reisinfo)
 // en vol (ook instellingen en uitleg). De CSS kijkt naar data-sheet, en alleen onder 640 px.
 const panel = $("panel");
-const narrow = matchMedia("(max-width: 640px)");
 type Sheet = "collapsed" | "half" | "full";
 const SHEETS: Sheet[] = ["collapsed", "half", "full"];
 
@@ -881,7 +1025,23 @@ const setSheetHeight = () => {
 new ResizeObserver(setSheetHeight).observe(panel);
 narrow.addEventListener("change", setSheetHeight);
 
-// reisinfo na een tik (smal scherm): in de sheet, met een markering op de kaart
+// ---------- desktop: het paneel inklappen (de stand wordt onthouden) ----------
+const fold = $("fold");
+function setFolded(on: boolean) {
+  panel.classList.toggle("folded", on);
+  fold.textContent = on ? "»" : "«";
+  fold.title = on ? "Paneel uitklappen" : "Paneel inklappen";
+  fold.setAttribute("aria-expanded", String(!on));
+}
+try { setFolded(localStorage.getItem("ovafstand-folded") === "1"); } catch { /* geen opslag: uitgeklapt */ }
+fold.addEventListener("click", () => {
+  const on = !panel.classList.contains("folded");
+  setFolded(on);
+  try { localStorage.setItem("ovafstand-folded", on ? "1" : "0"); } catch { /* niet erg */ }
+  track(on ? "paneel-ingeklapt" : "paneel-uitgeklapt");
+});
+
+// reisinfo na een klik of tik: bovenaan het paneel (op een smal scherm in de sheet), met een markering op de kaart
 const info = $("info");
 const tapEl = document.createElement("div");
 tapEl.className = "tap-marker";
@@ -891,22 +1051,26 @@ function showInfo(content: HTMLElement, lngLat: [number, number]) {
   const close = document.createElement("button");
   close.className = "close";
   close.setAttribute("aria-label", "Sluiten");
+  close.title = "Sluiten (Esc)";
   close.textContent = "×";
   close.onclick = hideInfo;
+  const first = info.hidden; // bij bijwerken (tijdschuif, instellingen) de sheet niet verzetten
   info.replaceChildren(close, content);
   info.hidden = false;
   tapMarker.setLngLat(lngLat).addTo(map);
-  setSheet("half");
+  if (first) {
+    setSheet("half");
+    panel.scrollTop = 0;
+  }
 }
 function hideInfo() {
+  pinAt = null;
+  pinPending = false;
   if (info.hidden) return;
   info.hidden = true;
   info.replaceChildren();
   tapMarker.remove();
 }
-
-if (matchMedia("(pointer: coarse)").matches)
-  $("hint").textContent = "Tik op de kaart voor de reistijd en de route. Sleep de punt om het vertrekpunt te verplaatsen.";
 
 // ---------- voorbeelden, mijn locatie, delen ----------
 const CHIPS: [label: string, lat: number, lon: number, name: string][] = [
@@ -961,7 +1125,10 @@ $("share").addEventListener("click", async () => {
   // op een telefoon het deelmenu van het systeem, op de desktop kopiëren
   if (navigator.share && matchMedia("(pointer: coarse)").matches) {
     try {
-      await navigator.share({ title: `OV-afstand vanaf ${$("origin").textContent}`, url });
+      const title = comparing && pointB
+        ? `OV-afstand: ${pointName(origin)} en ${pointName(pointB)} vergeleken`
+        : `OV-afstand vanaf ${pointName(origin)}`;
+      await navigator.share({ title, url });
       track("gedeeld-menu");
     } catch { /* geannuleerd */ }
     return;

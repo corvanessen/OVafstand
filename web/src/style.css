@@ -4,6 +4,7 @@
   --muted: #667085;
   --line: #e4e7ec;
   --accent: #1b4dd8;
+  --b: #0e7490; /* punt B bij vergelijken */
   --shadow: 0 6px 24px rgba(16, 24, 40, 0.16);
   --radius: 12px;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -41,6 +42,26 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 .grip { display: none; }
 #info[hidden] { display: none; }
 
+/* reisinfo na een klik: bovenaan het paneel, onder de titel */
+#info { padding: 4px 16px 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+#info .close {
+  float: right; width: 32px; height: 32px; margin: -4px -8px 0 0; border-radius: 8px;
+  border: 0; background: none; font-size: 22px; color: var(--muted); cursor: pointer;
+}
+#info .close:hover { background: #e4e7ec; color: var(--fg); }
+
+/* inklappen (desktop): titel, reisinfo, vertrekpunten, tijdschuif en legenda blijven */
+.fold {
+  flex: none; width: 30px; height: 30px; margin: -4px -8px 0 8px; border-radius: 8px;
+  border: 0; background: none; color: var(--muted); font-size: 18px; cursor: pointer;
+}
+.fold:hover { background: #e4e7ec; color: var(--fg); }
+#panel.folded { width: 280px; }
+#panel.folded .sub,
+#panel.folded .body > :not(.origin-row):not(.legend-wrap):not(.time-row.active):not(.compare-note) { display: none; }
+#panel.folded :is(.time-toggle, .chart) { display: none; }
+#panel.folded header { padding-bottom: 2px; }
+
 .search { position: relative; margin-top: 6px; }
 #q {
   width: 100%;
@@ -75,6 +96,33 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
   flex: none;
 }
 .origin-marker { cursor: grab; width: 20px; height: 20px; }
+/* vergelijken: A donker, B petrol, met een letter in de markering */
+.dot.b, .origin-marker.b { background: var(--b); box-shadow: 0 0 0 1.5px var(--b); }
+.origin-marker.lettered {
+  width: 26px; height: 26px; border-width: 2px;
+  color: #fff; font: 700 13px/22px system-ui, sans-serif; text-align: center;
+}
+.origin-row.pickable {
+  margin: 6px -8px 0; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; cursor: pointer;
+}
+#rowA.pickable { margin-top: 10px; }
+.origin-row.pickable:hover { background: #f6f8fb; }
+.origin-row.editing { border-color: var(--accent); background: #f2f5fb; }
+.origin-row > div { flex: 1; min-width: 0; }
+#origin, #originB { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#rowB[hidden], .compare-note[hidden], .small-btn[hidden] { display: none; }
+.row-close {
+  flex: none; width: 32px; height: 32px; border: 0; border-radius: 6px;
+  background: none; color: var(--muted); font-size: 20px; cursor: pointer;
+}
+.row-close:hover { background: #e4e7ec; color: var(--fg); }
+.compare-note { font-size: 12px; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
+.tt-part { margin-top: 8px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.tag {
+  display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--fg); color: #fff; font-size: 11px; line-height: 18px; text-align: center;
+}
+.tag.b { background: var(--b); }
 .hint { color: var(--muted); font-size: 12px; margin: 6px 0 12px; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -150,7 +198,7 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.4; }
 .loading .status::before { content: "⟳ "; display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* klikken kiest een vertrekpunt: kruisje in plaats van het sleephandje van MapLibre */
+/* klikken wijst een plek aan: kruisje in plaats van het sleephandje van MapLibre */
 #map .maplibregl-canvas-container.maplibregl-interactive { cursor: crosshair; }
 #map .maplibregl-canvas-container.maplibregl-interactive:active { cursor: grabbing; }
 
@@ -222,6 +270,8 @@ ol.legs li.t4 { border-color: #00a3c4; }   /* veer */
     border-radius: 3px; background: #c5ccd6;
   }
   #panel header { padding-top: 0; touch-action: none; cursor: grab; user-select: none; }
+  .fold { display: none; }
+  #panel.folded { width: auto; }
   h1 { font-size: 17px; }
 
   /* ingeklapt: alleen het vertrekpunt en de legenda */
@@ -241,12 +291,9 @@ ol.legs li.t4 { border-color: #00a3c4; }   /* veer */
   /* half: zoeken, voorbeelden, vertrekpunt en delen; instellingen en uitleg pas bij vol */
   #panel[data-sheet="half"] .body > :is(details, .hint, footer) { display: none; }
   /* met reisinfo in beeld is de titel overbodig */
-  #info:not([hidden]) + header { display: none; }
-  #info { padding: 0 16px 12px; border-bottom: 1px solid var(--line); margin-bottom: 10px; font-size: 14px; }
-  #info .close {
-    float: right; width: 44px; height: 44px; margin: -8px -12px 0 0;
-    border: 0; background: none; font-size: 22px; color: var(--muted); cursor: pointer;
-  }
+  #panel:has(#info:not([hidden])) header { display: none; }
+  #info { padding: 0 16px 12px; margin-bottom: 10px; }
+  #info .close { width: 44px; height: 44px; margin: -8px -12px 0 0; }
   #info .btn { min-height: 48px; font-size: 15px; }
 
   .status { display: none; }

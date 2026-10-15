@@ -84,7 +84,8 @@ export function bandColor(b: number, n: number): [number, number, number] {
   return [0, 1, 2].map((k) => Math.round(c0[k] + (c1[k] - c0[k]) * f)) as [number, number, number];
 }
 
-export function colorize(r: Raster, tMaxMin: number): ImageData {
+/** time: minuten per cel (een Raster.time, of bij vergelijken de langste van twee) */
+export function colorize(time: Float32Array, tMaxMin: number): ImageData {
   const n = Math.ceil(tMaxMin / BAND_MIN);
   const lut = Array.from({ length: n }, (_, b) => bandColor(b, n));
   const img = new ImageData(NX, NY);
@@ -94,7 +95,7 @@ export function colorize(r: Raster, tMaxMin: number): ImageData {
     const src = j * NX;
     const dst = (NY - 1 - j) * NX; // afbeelding begint bovenaan (noorden)
     for (let i = 0; i < NX; i++) {
-      const t = r.time[src + i];
+      const t = time[src + i];
       if (t < tMaxMin) px[dst + i] = packed[Math.floor(t / BAND_MIN)];
     }
   }
