@@ -162,8 +162,8 @@ OSM  ─┴─> fietsrouting ─> fietstabellen per tegel ──>    bike/{z}/{x
 | **1. Kernmotor** | Graaf voor A+ bouwen, exporteren als binair bestand. Dijkstra in TS, plus een test tegen bekende reizen (vergelijken met 9292 / NS-planner). | `graph.bin` en een routing-module met tests |
 | **2. MVP-website** | Kaart, klikken voor het startpunt, PDOK-zoekbalk, heatmap met hemelsbrede fietsafstand (kegeltruc), legenda, tooltip met de reistijd en de route ("fiets 6 min → IC 34 min → fiets 4 min") | Werkende site voor heel NL |
 | **3. Realistisch fietsen** | Fietstabellen via OSRM, tegels opslaan, water en veerboten goed meenemen | Correcte randen bij water, nauwkeurig dichtbij |
-| **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". | Tweede modus |
-| **5. Grensregio** | België en een uitsnede van Duitsland samenvoegen in de GTFS (stop-ID's laten matchen bij grensstations) | Kaart tot ongeveer 50 km over de grens |
+| **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". Stap 1 en 2 zijn klaar: "Echte vertrektijden" met de mediaan over 12 vertrekken. | Tweede modus |
+| **5. Grensregio** | België en een uitsnede van Duitsland samenvoegen in de GTFS (stop-ID's laten matchen bij grensstations). Verkend, zie "Verkenning fase 4 en 5". | Kaart tot ongeveer 50 km over de grens |
 | **6. Gebruikers en bereik** | Bezoekers meten, deellink met instellingen, Open Graph, uitleg, mijn locatie, bottom sheet op mobiel, dag-animatie (uurmodel), twee vertrekpunten vergelijken. Later: overstapstraf, alleen trein. Zie "Fase 6 in detail". | Begrijpelijk en deelbaar voor bezoekers zonder voorkennis |
 
 ### Risico's
@@ -1058,7 +1058,7 @@ Op branch `fase4` (vanaf `verkenning-4-5`).
   - Een vertrek vóór 00:00 (bij 00:00 en 00:30) valt in de avond van dezelfde dag.
 - **Reisinfo.** `csaPath` rekent de scan van de mediaan voor die halteplek opnieuw (±10 ms) en leest de route terug: aankomst-connection, de instapconnection van die rit, en loopstukken. De wachttijd is het verschil tussen aankomst op de halte en vertrek van de rit.
 - **Worker.** `Params.timetable`. `prepareDay` laadt de dienstregeling, en zet `timetable` uit als die ontbreekt. Het diagram en het afspelen rekenen ook met CSA.
-- **UI.** Een vinkje "Volgens de dienstregeling" onder de tijdschuif, alleen zichtbaar met een vertrektijd. De voetregel krijgt "(dienstregeling)". De uitleg heeft een alinea erbij. Deellink `&r=1`, en GoatCounter telt `dienstregeling`.
+- **UI.** Een vinkje "Volgens de dienstregeling" onder de tijdschuif, alleen zichtbaar met een vertrektijd. (In stap 2 vervangen door twee knoppen, zie daar.) De voetregel krijgt "(dienstregeling)". De uitleg heeft een alinea erbij. Deellink `&r=1`, en GoatCounter telt `dienstregeling`.
 
 **Metingen** (vanaf Utrecht C met de fiets; tussen haakjes het uurmodel):
 

@@ -84,7 +84,7 @@ tMaxSel.addEventListener("change", () => {
   settingsChanged();
 });
 
-// ---------- vertrektijd (uurmodel) en de werkdag afspelen ----------
+// ---------- vertrektijd (uurmodel of echte vertrektijden) en de werkdag afspelen ----------
 const timeOn = $<HTMLInputElement>("timeOn");
 const departSlider = $<HTMLInputElement>("departMin");
 const playBtn = $<HTMLButtonElement>("play");
@@ -317,7 +317,7 @@ function syncTime() {
   for (const btn of ttButtons) btn.setAttribute("aria-pressed", String((btn.dataset.tt === "1") === params.timetable));
   if (on) $("timeNote").textContent = timeNote(params.departMin!);
   $("departOut").textContent = clock(on ? params.departMin! : +departSlider.value);
-  // met een tijdstip telt altijd de echte wachttijd van dat uur
+  // met een tijdstip telt de wachttijd van dat uur (gemiddeld of echt), niet de wachtfactor
   for (const el of modelRadios) el.disabled = on;
   const day = DAY_NAME[params.day].toLowerCase();
   $("dataWindow").textContent = on

@@ -1,7 +1,8 @@
 """Fase 1: exporteer graph.npz naar een compact binair formaat voor de browser.
 
 Gebruik:  python pipeline/export_web.py [YYYYMMDD]
-Schrijft web/public/data/graph.bin en web/public/data/meta.json
+Schrijft naar web/public/data/: graph.bin, meta.json, hours.bin.gz en per dag conn_<datum>.bin.gz;
+met meer datums ook day_<datum>.bin.gz en hours_<datum>.bin.gz (zie onder).
 
 graph.bin is een aaneenschakeling van typed arrays (little endian), in deze volgorde,
 met byte-offsets in meta.json:

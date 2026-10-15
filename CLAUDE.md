@@ -25,7 +25,7 @@ De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en
 - Verkenning fase 4/5 (metingen): `export_connections.py <datum>` → `data/connections_<datum>.bin`, met de CSA-benchmark `web/bench/csa_bench.ts` (bundelen met rolldown). `web/bench/csa_check.ts` controleert `csa.ts` zelf (laden, rekentijd, route naar Groningen). `border_survey.py <zip> [datum]` telt een buitenlandse feed (BE/DE in `data/raw/<feed>/gtfs.zip`).
 - Bron: `http://gtfs.ovapi.nl/nl/gtfs-nl.zip` (±260 MB) naar `data/raw/`. `data/` staat niet in git.
 - Kies een dinsdag of woensdag buiten de schoolvakanties, binnen `feed_start_date`..`feed_end_date` (feed_info.txt).
-- `web/public/data/{graph.bin,meta.json,hours.bin.gz}` staat **wel** in git. Opnieuw genereren na een data-update.
+- `web/public/data/{graph.bin,meta.json,hours*.bin.gz,day_*.bin.gz,conn_*.bin.gz}` staat **wel** in git. Opnieuw genereren na een data-update.
 
 ## Model (zie het plan voor het waarom)
 - **Knopen:** halteplekken (`parent_station`, anders de `stop_id`) plus lijnknopen (route+richting @ halteplek).
@@ -76,4 +76,5 @@ De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en
   - de heatmap verschijnt, en de statusregel toont "netwerk ~50–100 ms · kaart ~250–400 ms", en de voetregel "fiets bij vertrek, lopen bij aankomst · over de weg (OpenStreetMap)"; met "Fiets bij aankomst" aan geeft Utrecht C "28.960 haltes binnen 3 uur";
   - de tooltip toont een route;
   - zoeken naar "Ruinen" werkt;
+  - met een tijdstip (`&u=480`) en "Echte vertrektijden" (`&r=1`): de regel onder de schuif noemt 07:45–08:40, de statusregel geeft vanaf Utrecht C "26.355 haltes binnen 3 uur" (het uurmodel 28.493), en de reisinfo heeft kloktijden die optellen. In Node: `web/bench/csa_check.ts`;
   - geen fouten in de console.

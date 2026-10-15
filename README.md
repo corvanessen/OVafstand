@@ -93,7 +93,7 @@ Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De
 
 - **Het zware werk is al gedaan.**
   - De dienstregeling (miljoenen stoptijden) is vooraf samengevat tot ±117.000 knopen en ±287.000 kanten.
-  - De browser rekent dus niet met vertrektijden, maar met een kleine graaf die één keer wordt geladen.
+  - De browser rekent dus niet met vertrektijden, maar met een kleine graaf die één keer wordt geladen. Alleen bij "Echte vertrektijden" komen de ritten zelf binnen (zie 2).
 - **Laden zonder parsen.**
   - `graph.bin` wordt in één keer als `ArrayBuffer` opgehaald.
   - De arrays (`Float32Array`, `Uint32Array`, …) zijn rechtstreekse vensters op die buffer. Er hoeft niets omgezet of gekopieerd te worden.
@@ -119,6 +119,7 @@ Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De
 - **De tooltip is bijna gratis.**
   - Bij hover zoekt de worker niet opnieuw. Hij kijkt welke halte de cel onder de muis leverde.
   - Daarna loopt hij de opgeslagen zoekboom terug naar het vertrekpunt.
+  - Bij "Echte vertrektijden" bewaart de worker geen zoekboom per scan. Hij rekent alleen de scan van de mediaan voor die halte opnieuw uit (±10 ms).
 
 ## Data verversen
 
