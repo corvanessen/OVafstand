@@ -247,7 +247,9 @@ Fase 3, realistisch fietsen:
 - ~~6.4 deel 2: frames vooruit rekenen, overgang, diagram.~~ Klaar, zie "Resultaten fase 6.4, deel 2".
 - ~~6.5 deel 1: twee vertrekpunten vergelijken, "Voor ons allebei".~~ Klaar, zie "Resultaten fase 6.5, deel 1".
 - ~~6.7 stap 1: het paneel inklappen en de reisinfo vastzetten na een klik.~~ Klaar, zie "Resultaten fase 6.7, stap 1".
-- **Nu:** de stand "Verschil" (A − B, tweekleurig rond 0) met een schakelaar en `&m=diff`. Daarna de rest van 6.7 in de volgorde daar. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
+- ~~6.5 deel 2 ("Verschil") en de rest van 6.7.~~ Klaar, zie de resultaten van 6.5 deel 2 en 6.7 stap 2–4.
+- ~~Fase 4 en 5 verkennen: grootte, rekentijd, feeds.~~ Klaar, zie "Verkenning fase 4 en 5".
+- **Nu:** fase 4, stap 1: connections per rit in een bestand voor de browser, met CSA in de worker als derde stand naast "gemiddelde dag" en "uurmodel". Daarnaast bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -921,3 +923,106 @@ Eerst meten en delen, dan de grote features.
 Stap 4 en 5 kunnen in beide volgordes.
 
 **Open vraag:** een eigen domeinnaam? Dat kan met GitHub Pages.
+
+## Verkenning fase 4 en 5 (15 okt 2026)
+
+Op branch `verkenning-4-5`. Alleen gemeten; de web-app is niet veranderd.
+
+### Fase 4: dienstregeling met CSA
+
+`pipeline/export_connections.py 20261110` maakt de connections: elke hop van een rit van halteplek naar volgende halteplek (dezelfde halteplekken als `graph.bin`). De benchmark is `web/bench/csa_bench.ts`: een CSA in Node met 0 min overstap, lopen over de loopkanten van de graaf (één stap) en hemelsbreed fietsen naar de eerste halte.
+
+**Aantal.** 2.100.707 connections op een werkdag (fase 0 telde 2,1 mln). De spits telt ±145k per uur. Het venster 07–10 u telt 420k.
+
+**Grootte per dag:**
+
+| Codering | Ruw | gzip |
+|---|---|---|
+| (a) 5 × uint32 per connection | 42,0 MB | 17,6 MB |
+| (b) kolommen: Δvertrek u8, rijtijd u16, halteplekken u16, rit u32 | 25,2 MB | 12,2 MB |
+| (c) per rit: halteplekken plus tijden ten opzichte van het eerste vertrek | 11,8 MB | **0,78 MB** |
+| (d) patronen (zelfde haltes en tijden; 20.691 voor 120.290 ritten) plus per rit (patroon, vertrek) | 3,5 MB | **0,56 MB** |
+
+Per rit of per patroon opslaan is dus klein genoeg. De browser bouwt de gesorteerde array dan zelf; ruw is dat ±20 MB in het geheugen.
+
+**Rekentijd** (Node, één run, venster 3 uur):
+
+| Vertrek | CSA | A+ (Dijkstra) |
+|---|---|---|
+| Utrecht C | 8–12 ms (22:00: 3 ms) | 35–43 ms |
+| Ruinen | 6 ms | 13–24 ms |
+| Maastricht | 6 ms | 15–58 ms |
+| mediaan over 12 vertrekken (08:00–08:55, elke 5 min) | 100–140 ms | |
+
+CSA is dus 3–5 × sneller dan de huidige Dijkstra. Ook de mediaan over 12 vertrekmomenten per frame past binnen het budget van de tijdschuif.
+
+**Reistijden** (min, vanaf Utrecht C met de fiets, vertrek rond 08:00):
+
+| Naar | A (rijtijd) | A+ | uurmodel 08:00 | CSA 08:00 | CSA 08:07 | CSA mediaan 08:00–08:55 |
+|---|---|---|---|---|---|---|
+| Amsterdam C | 27 | 34 | 33 | 35 | 28 | 35 |
+| Rotterdam C | 37 | 41 | 41 | 40 | 48 | 45 |
+| Zwolle | 54 | 62 | 62 | 71 | 64 | 66 |
+| Groningen | 120 | 137 | 140 | 153 | 146 | 148 |
+| haltes binnen 1 uur | 11.612 | 5.014 | 4.841 | 5.159 | 4.910 | 4.427 |
+
+- **Controle.** Vanaf de halteplek Utrecht Centraal, zonder fiets, kom je in Groningen aan om :03 en :33. Bij vertrek om 08:15 of 08:45 is dat 138 min, om 08:00 of 08:30 153 min. Amsterdam C kost 30–35 min.
+- **A+ is optimistisch voor lange reizen met een overstap** (Groningen 137 tegen 148). Het telt een gemiddelde wachttijd per instap, maar geen aansluitingen die net gemist worden. Voor korte, frequente verbindingen komen A+ en CSA overeen.
+- **Op het platteland** (Ruinen) springt de CSA sterk per vertrekmoment (13.185 tegen 14.506 haltes binnen 3 uur, met 7 min verschil). De mediaan per frame is dus nodig, zoals het plan al zei.
+
+**Nog niet gemeten:** ritten van de vorige dag na middernacht, een overstaptijd en fietsen tussen haltes (ULTRA).
+
+### Fase 5: grensregio
+
+`pipeline/border_survey.py <zip> [datum]` telt per feed, op een dinsdag binnen de geldigheid van de feed:
+- de connections in de rasterbox (3,2–7,4 O, 50,6–53,7 N);
+- de connections in een strook van 20 of 50 km rond de dichtstbijzijnde binnenlandse NL-halte;
+- de overlap met de NL-feed.
+
+Ter controle telt het op de NL-feed zelf 2.099.140 connections.
+
+**Feeds:**
+
+| Feed | Bron | Toegang | Geldig | Zip |
+|---|---|---|---|---|
+| NMBS/SNCB | `gtfs.irail.be/nmbs/gtfs/latest.zip` (iRail) | vrij | t/m 12 dec 2026 | 30 MB |
+| TEC | `opendata.tec-wl.be/Current%20GTFS/TEC-GTFS.zip` | vrij | t/m 31 dec 2026 | 80 MB |
+| De Lijn | officieel alleen op aanvraag; oude kopie via Mobility Database (`mdb-684`) | **aanvraag** | kopie: t/m 30 sep 2026 | 216 MB |
+| MIVB/STIB | officieel via het Opendatasoft-portaal (export nu 404); oude kopie `mdb-1088` | **account** | kopie: t/m 12 apr 2026 | 14 MB |
+| Duitsland | `download.gtfs.de/germany/free/latest.zip` (heel DE; `nv_free`, `rv_free` en `fv_free` apart) | vrij, licentie nog nakijken | ±1 maand vooruit, wekelijks nieuw | 290 MB |
+
+**Connections per werkdag** (de NL-feed heeft er 2,10 mln):
+
+| Feed | Rasterbox | Strook 50 km | Strook 20 km | Halteplekken (box / 50 km / 20 km) |
+|---|---|---|---|---|
+| De Lijn | 848k | 755k | 363k | 22.111 / 19.808 / 8.199 |
+| MIVB | 373k | 303k | 0 | 2.198 / 1.719 / 0 |
+| NMBS | 35k | 26k | 7k | 365 / 280 / 109 |
+| TEC | 247k | 183k | 170k | 9.112 / 5.355 / 4.194 |
+| Duitsland | 2.422k | 1.193k | 332k | 23.693 / 14.485 / 6.380 |
+| **Samen** | **3,93 mln (+187%)** | **2,46 mln (+117%)** | **0,87 mln (+42%)** | **57.500 / 41.600 / 18.900** |
+
+**Overlap met de NL-feed:**
+- **De NL-feed bevat al 2.676 ritten van De Lijn op 420 grenslijnen, met hun hele route door Vlaanderen (6.260 haltes).** De 665 haltes buiten NL uit fase 0 zijn dus te laag geteld. Van de ritten van De Lijn op gedeelde halteplekken zijn er 2.635 dubbel (alle vertrekken op dezelfde minuut).
+- Verder dubbel: 132 treinen van de NMBS, 111 ritten van TEC (lijnen bij Maastricht) en ±2.450 van de Duitse ritten (Arriva in Limburg, Aken, DB en NS over de grens).
+- **Koppelen gaat goed op afstand plus naam.** Voorbeelden: Bruxelles-Nord = Brussel-Noord, Anvers-Central = Antwerpen-Centraal, Wuppertal Hbf, Köln-Ehrenfeld. Let op met namen in twee talen: TEC "BOIRS" heet in de NL-feed "Beurs", en "LIEGE" heet "Luik". Afstand alleen (150 m) koppelt die toch.
+- Bij het samenvoegen moet per vervoerder één bron gelden. De ritten van De Lijn, NMBS en DB uit de NL-feed vallen dan weg. Anders telt een lijn dubbel, en dat geeft een te kort interval.
+
+**Gevolgen voor de graaf en de app:**
+- **Halteplekken.** Met de strook van 50 km komen er ±41.600 bij, samen ±76.000. Dat past niet meer in **uint16**, dus codering (b) hierboven gaat dan niet. Kijk ook `lineRoute` (uint16) na, want het aantal routes groeit mee. Met 20 km blijft het ±53.600.
+- **Grootte.** `graph.bin` (3,1 MB), `meta.json` (1,0 MB) en `hours*.bin.gz` (1,4 MB) groeien ongeveer mee met de connections. Bij 20 km is dat +40–60%, bij 50 km ruim het dubbele.
+- **Rekentijd** (geschat, niet gemeten). De Dijkstra wordt ongeveer evenredig trager: bij 50 km ±70–90 ms vanaf Utrecht C.
+- **Fietsraster.** Het hoeft niet te veranderen; de rasterbox dekt alles. Wel zijn de startcellen per halteplek opnieuw nodig (OSRM, `build_bike_grid.py`).
+- **`extract_day.py`** leest nu alleen `calendar_dates.txt`. De buitenlandse feeds hebben ook `calendar.txt` nodig, zoals `services_on` in `border_survey.py`.
+
+### Advies
+
+1. **Eerst fase 4.**
+   - De data is er, er is geen externe afhankelijkheid, en de metingen zijn gunstig: 0,6–0,8 MB per dag, en 6–12 ms per run.
+   - CSA kan een derde stand worden naast "gemiddelde dag" en "uurmodel". Bij de tijdschuif dan per frame de mediaan over meerdere vertrekmomenten.
+   - Het uurmodel kan blijven als snelle stand voor de animatie.
+2. **Fase 5 begint met de strook van 20 km.**
+   - Begin met NMBS, TEC en Duitsland (`gtfs.de`): die zijn vrij te downloaden.
+   - Voor De Lijn en MIVB nu al toegang aanvragen. MIVB valt pas binnen de strook van 50 km (Brussel).
+   - De Lijn rond de grens zit voor een groot deel al in de NL-feed.
+   - Pas bij 50 km is het werk voor uint32 halteplek-indexen nodig.
