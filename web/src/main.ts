@@ -6,8 +6,8 @@ import type { LayerSpecification } from "maplibre-gl";
 import { geocode, type Place } from "./geocode";
 import { CORNERS, cellOf } from "./grid";
 import { BAND_MIN, DIFF_A, DIFF_B, DIFF_EDGES, DIFF_SAME, bandColor } from "./raster";
-import type { Params, Segment } from "./router";
-import type { CompareMode, Explained, Request, Response, Station } from "./worker";
+import type { Day, Params, Segment } from "./router";
+import type { CompareMode, Explained, Request, Response, Source, Station } from "./worker";
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -29,6 +29,7 @@ function track(event: string) {
 // ---------- instellingen ----------
 const DEFAULTS: Params = {
   waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true, departMin: null,
+  bikeStart: true, bikeEnd: false, day: "wd",
 };
 const params: Params = { ...DEFAULTS };
 let bikeLoaded = false; // het fietsraster komt na de graaf binnen
@@ -42,6 +43,8 @@ const RANGES: [NumParam, (v: number) => string][] = [
 ];
 const modelRadios = [...document.querySelectorAll<HTMLInputElement>("input[name=model]")];
 const realBikeBox = $<HTMLInputElement>("realBike");
+// fiets bij vertrek en bij aankomst (fase 6.7): zonder fiets loop je dat stuk
+const LEG_BOXES = [["bikeStart", $<HTMLInputElement>("bikeStart")], ["bikeEnd", $<HTMLInputElement>("bikeEnd")]] as const;
 const tMaxSel = $<HTMLSelectElement>("tMaxMin");
 
 for (const [id, fmt] of RANGES) {
@@ -62,6 +65,19 @@ realBikeBox.addEventListener("change", () => {
   params.realBike = realBikeBox.checked;
   settingsChanged();
 });
+for (const [key, box] of LEG_BOXES) {
+  box.addEventListener("change", () => {
+    params[key] = box.checked;
+    syncLegs();
+    settingsChanged();
+  });
+}
+/** schuiven die bij lopen niet meetellen, uitzetten */
+function syncLegs() {
+  $<HTMLInputElement>("directMaxKm").disabled = !params.bikeStart;
+  $<HTMLInputElement>("bikeMaxKm").disabled = !params.bikeEnd;
+  $<HTMLInputElement>("bikeKmh").disabled = !params.bikeStart && !params.bikeEnd;
+}
 tMaxSel.addEventListener("change", () => {
   params.tMaxMin = +tMaxSel.value;
   renderLegend();
@@ -87,6 +103,20 @@ let playTimer = 0;
 const clock = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 const nextMin = (min: number, k = 1) => (min + k * FRAME_STEP_MIN) % 1440;
 
+// ---------- dag: werkdag, zaterdag of zondag (fase 6.7 stap 4) ----------
+const DAY_NAME: Record<Day, string> = { wd: "Werkdag", za: "Zaterdag", zo: "Zondag" };
+const dayDates = new Map<Day, string>(); // de dagen in de data, met hun datum (na "ready")
+for (const btn of $("dayPick").querySelectorAll("button")) {
+  btn.addEventListener("click", () => {
+    const day = btn.dataset.day as Day;
+    if (day === params.day) return;
+    params.day = day;
+    if (day !== "wd") track("dag-weekend");
+    syncTime();
+    settingsChanged();
+  });
+}
+
 timeOn.addEventListener("change", () => {
   params.departMin = timeOn.checked ? +departSlider.value : null;
   if (!timeOn.checked) stopPlaying();
@@ -104,7 +134,7 @@ playBtn.addEventListener("click", () => (playing ? stopPlaying() : startPlaying(
 function setPlaying(on: boolean) {
   playing = on;
   playBtn.textContent = on ? "❚❚" : "▶";
-  playBtn.setAttribute("aria-label", on ? "Pauzeren" : "Werkdag afspelen");
+  playBtn.setAttribute("aria-label", on ? "Pauzeren" : `${DAY_NAME[params.day]} afspelen`);
 }
 function startPlaying() {
   if (params.departMin === null) return;
@@ -169,8 +199,8 @@ let profileKey = "";
 
 /** na elke wijziging: opnieuw beginnen als het vertrekpunt of het fietsen anders is */
 function checkProfile() {
-  const key = JSON.stringify([points(), params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
-    params.realBike && bikeLoaded]);
+  const key = JSON.stringify([points(), params.day, params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
+    params.bikeStart, params.bikeEnd, params.realBike && bikeLoaded]);
   if (key !== profileKey) {
     profileKey = key;
     profileGen++;
@@ -213,7 +243,8 @@ const chartNow = chartSvg.querySelector("line")!;
 function renderChart() {
   chartEl.hidden = params.departMin === null;
   if (chartEl.hidden) return;
-  chartEl.querySelector("span")!.textContent = points().b ? "Voor allebei binnen 1 uur" : "Binnen 1 uur bereikbaar";
+  chartEl.querySelector("span")!.textContent = source === "ic" ? "Binnen 1 uur van een IC-station"
+    : points().b ? "Voor allebei binnen 1 uur" : "Binnen 1 uur bereikbaar";
   const n = profile.length;
   let max = 1;
   for (const v of profile) if (v > max) max = v;
@@ -263,7 +294,14 @@ function syncTime() {
   $("departOut").textContent = clock(on ? params.departMin! : +departSlider.value);
   // met een tijdstip telt altijd de echte wachttijd van dat uur
   for (const el of modelRadios) el.disabled = on;
-  $("dataWindow").textContent = on ? `werkdag, vertrek ${clock(params.departMin!)}` : "werkdag, 07–19 u";
+  const day = DAY_NAME[params.day].toLowerCase();
+  $("dataWindow").textContent = on ? `${day}, vertrek ${clock(params.departMin!)}` : `${day}, 07–19 u`;
+  const d = dayDates.get(params.day);
+  if (d) $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
+  for (const btn of $("dayPick").querySelectorAll("button")) {
+    btn.setAttribute("aria-pressed", String(btn.dataset.day === params.day));
+    btn.hidden = dayDates.size > 0 && !dayDates.has(btn.dataset.day as Day);
+  }
   renderChart();
 }
 departSlider.value = String(DEFAULT_DEPART);
@@ -276,6 +314,8 @@ function syncControls() {
   }
   for (const el of modelRadios) el.checked = +el.value === params.waitFactor;
   realBikeBox.checked = params.realBike;
+  for (const [key, box] of LEG_BOXES) box.checked = params[key];
+  syncLegs();
   tMaxSel.value = String(params.tMaxMin);
   renderLegend();
   syncTime();
@@ -344,11 +384,13 @@ function renderDiffLegend() {
   }
 }
 
-// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&p2=lat,lon,naam&m=diff ----------
+// ---------- deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&s=1&a=0&dag=za&k=ic&p2=lat,lon,naam&m=diff ----------
 // Alleen afwijkingen van de standaard komen in de link; onbekende of ongeldige waarden worden genegeerd.
-// p2 is punt B bij vergelijken (b is al de fietsgrens), m=diff de stand "Verschil".
+// p2 is punt B bij vergelijken (b is al de fietsgrens), m=diff de stand "Verschil",
+// k=ic de kaart naar het dichtstbijzijnde IC-station (het vertrekpunt blijft erin staan).
 const HASH_KEYS = {
   w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike", u: "departMin",
+  s: "bikeStart", a: "bikeEnd",
 } as const;
 type HashParam = (typeof HASH_KEYS)[keyof typeof HASH_KEYS];
 type Origin = { lat: number; lon: number; name: string };
@@ -357,7 +399,7 @@ type Origin = { lat: number; lon: number; name: string };
 function parseSetting(key: HashParam, raw: string): number | boolean | null {
   const v = Number(raw);
   if (raw === "" || !Number.isFinite(v)) return null;
-  if (key === "realBike") return v === 0 || v === 1 ? v === 1 : null;
+  if (key === "realBike" || key === "bikeStart" || key === "bikeEnd") return v === 0 || v === 1 ? v === 1 : null;
   if (key === "waitFactor") return modelRadios.some((r) => +r.value === v) ? v : null;
   if (key === "tMaxMin") return [...tMaxSel.options].some((o) => +o.value === v) ? v : null;
   const input = $<HTMLInputElement>(key);
@@ -378,23 +420,26 @@ function parsePoint(s: string): Origin | null {
 const fmtPoint = ({ lat, lon, name }: Origin) =>
   `${lat.toFixed(5)},${lon.toFixed(5)}${name ? "," + encodeURIComponent(name) : ""}`;
 
-function readHash(): { origin: Origin; b: Origin | null; mode: CompareMode; settings: Partial<Params> } | null {
+function readHash(): { origin: Origin; b: Origin | null; mode: CompareMode; source: Source; settings: Partial<Params> } | null {
   // het vertrekpunt staat vooraan; daarna volgen de instellingen, elk na een &
   const [head, ...rest] = location.hash.slice(1).split("&");
   const origin = parsePoint(head);
   if (!origin) return null;
-  const settings: Record<string, number | boolean> = {};
+  const settings: Record<string, number | boolean | string> = {};
   let b: Origin | null = null;
   let mode: CompareMode = "max";
+  let source: Source = "point";
   for (const part of rest) {
     const [k, raw] = part.split("=");
     if (k === "p2" && raw !== undefined) b = parsePoint(raw);
+    if (k === "dag" && (raw === "za" || raw === "zo")) settings.day = raw;
     if (k === "m" && raw === "diff") mode = "diff";
+    if (k === "k" && raw === "ic") source = "ic";
     const key = HASH_KEYS[k as keyof typeof HASH_KEYS];
     const v = key && raw !== undefined ? parseSetting(key, raw) : null;
     if (v !== null) settings[key] = v;
   }
-  return { origin, b, mode, settings: settings as Partial<Params> };
+  return { origin, b, mode, source, settings: settings as Partial<Params> };
 }
 
 function writeHash() {
@@ -403,8 +448,10 @@ function writeHash() {
     const v = params[key];
     if (v !== DEFAULTS[key]) h += `&${k}=${typeof v === "boolean" ? +v : v}`;
   }
+  if (params.day !== "wd") h += "&dag=" + params.day;
   if (comparing && pointB) h += "&p2=" + fmtPoint(pointB);
   if (comparing && compareMode === "diff") h += "&m=diff";
+  if (source === "ic") h += "&k=ic";
   history.replaceState(null, "", h);
 }
 
@@ -418,15 +465,19 @@ Object.assign(params, initial?.settings);
 type Which = "a" | "b";
 let pointB: Origin | null = initial?.b ?? null;
 let comparing = pointB !== null;
-let compareMode: CompareMode = initial?.mode ?? "max";
+let compareMode: CompareMode = initial?.b ? initial.mode : "max";
+// fase 6.7 stap 3: de kaart gaat over het vertrekpunt, of over de reistijd naar het dichtstbijzijnde IC-station
+let source: Source = initial?.source ?? "point";
+let nIc = 0;
 /** de kaart toont het verschil: alleen als B ook gekozen is */
-const diffShown = () => comparing && pointB !== null && compareMode === "diff";
+const diffShown = () => source === "point" && comparing && pointB !== null && compareMode === "diff";
 let editing: Which = comparing ? "b" : "a"; // het punt dat klikken, zoeken en de voorbeelden verplaatsen
 const pointName = (p: Origin) => p.name || `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
-/** de punten voor de worker: B alleen als het gekozen is */
+/** de punten voor de worker: B alleen als het gekozen is (bij de IC-kaart tellen ze niet) */
 const points = () => ({
+  source,
   a: { lat: origin.lat, lon: origin.lon },
-  b: comparing && pointB ? { lat: pointB.lat, lon: pointB.lon } : null,
+  b: source === "point" && comparing && pointB ? { lat: pointB.lat, lon: pointB.lon } : null,
 });
 syncControls();
 
@@ -444,15 +495,21 @@ const HINT = matchMedia("(pointer: coarse)").matches
   ? "Tik op de kaart voor de reistijd en de route. Sleep de punt om het vertrekpunt te verplaatsen."
   : "Klik op de kaart voor de route, of sleep de punt om het vertrekpunt te verplaatsen.";
 
-/** namen, markeringen en knoppen van A en B bijwerken */
+/** namen, markeringen en knoppen van A en B bijwerken (en verbergen bij de IC-kaart) */
 function renderPoints() {
+  const ic = source === "ic";
+  for (const btn of $("mapKind").querySelectorAll("button")) btn.setAttribute("aria-pressed", String(btn.dataset.kind === source));
+  $("icNote").hidden = !ic;
+  $("icNote").innerHTML = "<b>Naar het dichtstbijzijnde IC-station:</b> de kleur is de reistijd van elke plek naar het IC-station " +
+    `dat het snelst te bereiken is${nIc ? ` (${nIc} stations)` : ""}. Het stuk vanaf de plek zelf volgt "Fiets bij vertrek".`;
+  $("rowA").hidden = ic;
   $("origin").textContent = pointName(origin);
   $("originLabel").textContent = comparing ? "Punt A" : "Vertrekpunt";
-  $("rowB").hidden = !comparing;
+  $("rowB").hidden = ic || !comparing;
   $("originB").textContent = pointB ? pointName(pointB) : "kies een plek…";
-  $("compare").hidden = comparing;
-  $("compareNote").hidden = !comparing;
-  $("compareMode").hidden = !comparing;
+  $("compare").hidden = ic || comparing;
+  $("compareNote").hidden = ic || !comparing;
+  $("compareMode").hidden = ic || !comparing;
   for (const btn of $("compareMode").querySelectorAll("button")) btn.setAttribute("aria-pressed", String(btn.dataset.mode === compareMode));
   $("compareNote").innerHTML = compareMode === "diff"
     ? `<b>Verschil:</b> bruin is sneller vanaf A, petrol sneller vanaf B. Hoe donkerder, hoe groter het verschil. Grijs: minder dan ${DIFF_EDGES[0]} min.`
@@ -469,9 +526,12 @@ function renderPoints() {
   markerEl.textContent = comparing ? "A" : "";
   markerEl.classList.toggle("lettered", comparing);
   marker.setLngLat([origin.lon, origin.lat]);
-  if (comparing && pointB) markerB.setLngLat([pointB.lon, pointB.lat]).addTo(map);
+  if (ic) marker.remove();
+  else marker.addTo(map);
+  if (!ic && comparing && pointB) markerB.setLngLat([pointB.lon, pointB.lat]).addTo(map);
   else markerB.remove();
-  $("hint").textContent = !comparing ? HINT
+  $("hint").textContent = ic ? "Klik op de kaart of zoek een plek voor de reistijd en de route naar het IC-station."
+    : !comparing ? HINT
     : !pointB ? "Klik op de kaart of zoek een plek voor punt B."
     : `Klik op de kaart om punt ${editing.toUpperCase()} te verplaatsen. Kies hierboven welk punt.`;
 }
@@ -496,15 +556,34 @@ function stopCompare() {
   afterChange();
 }
 
-/** naar een plek vliegen en daar vertrekken (zoeken, voorbeelden, mijn locatie) */
+/** de soort kaart kiezen: vanaf het vertrekpunt, of naar het dichtstbijzijnde IC-station */
+function setSource(s: Source) {
+  if (s === source) return;
+  source = s;
+  if (s === "ic") track("kaart-ic");
+  hideInfo();
+  renderPoints();
+  settingsChanged();
+}
+
+/** naar een plek vliegen en daar vertrekken (zoeken, voorbeelden, mijn locatie);
+ *  bij de IC-kaart alleen erheen, met de reisinfo van die plek */
 function goTo(lat: number, lon: number, name = "", zoom = 8.5) {
+  if (source === "ic") {
+    map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), zoom) });
+    pinAt = { lat, lon, name };
+    pinPending = true;
+    flushExplain();
+    if (narrow.matches) setSheet("half");
+    return;
+  }
   setOrigin(lat, lon, name);
   if (!fitBoth(true)) map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), zoom) });
   if (narrow.matches) setSheet("collapsed"); // de kaart is nu het belangrijkst
 }
 /** bij vergelijken A en B allebei in beeld, op de desktop naast het paneel; false zonder B */
 function fitBoth(animate: boolean): boolean {
-  if (!comparing || !pointB) return false;
+  if (source !== "point" || !comparing || !pointB) return false;
   const pad = narrow.matches ? 40 : { top: 60, bottom: 60, right: 60, left: $("panel").offsetWidth + 60 };
   map.fitBounds([[Math.min(origin.lon, pointB.lon), Math.min(origin.lat, pointB.lat)],
     [Math.max(origin.lon, pointB.lon), Math.max(origin.lat, pointB.lat)]], { padding: pad, maxZoom: 11, animate });
@@ -637,11 +716,14 @@ function showResult(m: ResultMsg, fade: boolean) {
   const nl = (v: number) => v.toLocaleString("nl");
   const reached = m.split
     ? `${nl(m.reached)} haltes binnen ${params.tMaxMin / 60} uur: A sneller bij ${nl(m.split[0])}, B bij ${nl(m.split[1])}`
+    : source === "ic" ? `${nl(nIc)} IC-stations · ${nl(m.reached)} haltes binnen ${params.tMaxMin / 60} uur`
     : `${nl(m.reached)} haltes ${points().b ? "voor allebei " : ""}binnen ${params.tMaxMin / 60} uur`;
   $("status").textContent = reached + " · " +
     `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms` +
     (params.realBike && !bikeLoaded ? " · fietsraster laden…" : "");
-  $("bikeNote").textContent = m.bike ? "fietsen over de weg (OpenStreetMap)" : "fietsafstand hemelsbreed × 1,3";
+  const legNote = params.bikeStart === params.bikeEnd ? (params.bikeStart ? "fiets heen en terug" : "lopen van en naar de halte")
+    : params.bikeStart ? "fiets bij vertrek, lopen bij aankomst" : "lopen bij vertrek, fiets bij aankomst";
+  $("bikeNote").textContent = legNote + " · " + (m.bike ? "over de weg (OpenStreetMap)" : "afstand hemelsbreed × 1,3");
   hasResult = true;
   // het beeld is anders: het label en de vastgezette reisinfo opnieuw laten uitrekenen
   hoverSent = null;
@@ -654,8 +736,13 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
   if (m.type === "ready") {
     workerReady = true;
     stations = m.stations;
+    nIc = m.nIc;
+    renderPoints();
     const d = m.date;
     $("dataDate").textContent = `${d.slice(6, 8)}-${d.slice(4, 6)}-${d.slice(0, 4)}`;
+    for (const day of m.days) dayDates.set(day.key, day.date);
+    if (!dayDates.has(params.day)) params.day = "wd"; // een deellink met een dag die deze data niet heeft
+    syncTime();
     scheduleCompute();
   } else if (m.type === "bikeReady") {
     bikeLoaded = m.ok;
@@ -728,7 +815,7 @@ type LatLon = { lat: number; lon: number };
 let explainId = 0;
 let hoverAt: LatLon | null = null; // de laatste muispositie
 let hoverSent: LatLon | null = null; // de positie waarvoor het label al is gevraagd
-let pinAt: LatLon | null = null; // de vastgezette plek (null: geen reisinfo)
+let pinAt: (LatLon & { name?: string }) | null = null; // de vastgezette plek (null: geen reisinfo); naam na zoeken
 let pinPending = false;
 let explainBusy: "hover" | "pin" | null = null;
 
@@ -763,7 +850,10 @@ function explainHtml(m: Extract<Response, { type: "explain" }>): string {
   const within = `binnen ${params.tMaxMin / 60} uur`;
   if (m.parts.length === 1) {
     const p = m.parts[0];
-    if (p.minutes === null) return `<div class="tt-total">Niet bereikbaar</div><div class="tt-sub">${within}</div>`;
+    if (p.minutes === null) {
+      return `<div class="tt-total">Niet bereikbaar</div><div class="tt-sub">${within}${source === "ic" ? " van een IC-station" : ""}</div>`;
+    }
+    if (source === "ic") return icHtml(p);
     return `<div class="tt-total">${fmtMin(p.minutes)}</div>${legsHtml(p)}`;
   }
   // vergelijken: de langste van de twee of het verschil (dat is de kleur), daarna elke reis apart
@@ -805,18 +895,36 @@ function hoverHtml(m: Extract<Response, { type: "explain" }>): string {
     : `<div class="tt-sub">Niet voor allebei · ${each}</div>`;
 }
 
-/** de etappes van één reis, met het laatste stuk fietsen */
+const leg = (bike: boolean, min: number, to: string) =>
+  `<li class="${bike ? "bike" : "walk"}">${bike ? "Fiets" : "Loop"} ${fmtMin(min)} naar ${to}</li>`;
+
+/** IC-kaart: de worker rekent vanaf het station; hier staat de reis andersom, van de plek naar het station */
+function icHtml(m: Explained): string {
+  const [first, ...rest] = m.segments; // first: 0 min "fietsen" naar het IC-station waar de zoektocht begon
+  if (!first) return "";
+  const rows = [leg(params.bikeStart, m.lastBike, esc(rest.length ? rest[rest.length - 1].to : first.to))];
+  for (const s of rest.reverse()) {
+    if (s.kind === "walk") { if (s.minutes >= 0.5) rows.push(`<li class="walk">Loop ${fmtMin(s.minutes)} naar ${esc(s.from)}</li>`); }
+    else if (s.kind === "ride") rows.push(rideRow({ ...s, from: s.to, to: s.from }));
+  }
+  return `<div class="tt-total">${fmtMin(m.minutes!)}</div><div class="tt-sub">naar IC-station ${esc(first.to)}</div>` +
+    `<ol class="legs">${rows.join("")}</ol>`;
+}
+function rideRow(s: Extract<Segment, { kind: "ride" }>) {
+  const wait = s.wait >= 0.5 ? ` <span class="wait">+${Math.round(s.wait)} wacht</span>` : "";
+  return `<li class="ride t${s.route[1]}">${routeLabel(s)} ${fmtMin(s.minutes)}${wait}<br><small>${esc(s.from)} → ${esc(s.to)}</small></li>`;
+}
+
+/** de etappes van één reis, met het laatste stuk fietsen of lopen */
 function legsHtml(m: Explained): string {
   const rows: string[] = [];
   for (const s of m.segments) {
-    if (s.kind === "bike") { if (s.minutes >= 0.5) rows.push(`<li class="bike">Fiets ${fmtMin(s.minutes)} naar ${esc(s.to)}</li>`); }
-    else if (s.kind === "walk") rows.push(`<li class="walk">Loop ${fmtMin(s.minutes)} naar ${esc(s.to)}</li>`);
-    else {
-      const wait = s.wait >= 0.5 ? ` <span class="wait">+${Math.round(s.wait)} wacht</span>` : "";
-      rows.push(`<li class="ride t${s.route[1]}">${routeLabel(s)} ${fmtMin(s.minutes)}${wait}<br><small>${esc(s.from)} → ${esc(s.to)}</small></li>`);
-    }
+    if (s.kind === "bike") { if (s.minutes >= 0.5) rows.push(leg(params.bikeStart, s.minutes, esc(s.to))); }
+    else if (s.kind === "walk") { if (s.minutes >= 0.5) rows.push(`<li class="walk">Loop ${fmtMin(s.minutes)} naar ${esc(s.to)}</li>`); }
+    else rows.push(rideRow(s));
   }
-  rows.push(`<li class="bike">Fiets ${fmtMin(m.lastBike)} naar bestemming</li>`);
+  // direct (zonder OV) is het hele stuk het eerste stuk
+  rows.push(leg(m.segments.length ? params.bikeEnd : params.bikeStart, m.lastBike, "bestemming"));
   return `<ol class="legs">${rows.join("")}</ol>`;
 }
 
@@ -833,9 +941,17 @@ function onExplain(m: Extract<Response, { type: "explain" }>) {
     box.innerHTML = explainHtml(m);
     const btn = document.createElement("button");
     btn.className = "btn";
-    btn.textContent = comparing ? `Punt ${editing.toUpperCase()} hierheen` : "Vertrek vanaf hier";
+    // het punt van het label, ook als daarna een andere rij gekozen is
+    const which = editing;
+    const fromIc = source === "ic";
+    btn.textContent = comparing && !fromIc ? `Punt ${which.toUpperCase()} hierheen` : "Vertrek vanaf hier";
     btn.onclick = () => {
-      setOrigin(at.lat, at.lon);
+      // vanaf de IC-kaart: terug naar de gewone kaart, met hier het vertrekpunt (A)
+      if (fromIc) {
+        source = "point";
+        if (comparing) editing = "a";
+      }
+      setOrigin(at.lat, at.lon, at.name ?? "", fromIc ? "a" : which);
       track("vertrekpunt-klik");
       if (narrow.matches) setSheet("collapsed");
     };
@@ -955,6 +1071,7 @@ q.addEventListener("blur", () => setTimeout(() => showResults([]), 100));
 
 renderPoints();
 $("compare").addEventListener("click", startCompare);
+for (const btn of $("mapKind").querySelectorAll("button")) btn.addEventListener("click", () => setSource(btn.dataset.kind as Source));
 for (const btn of $("compareMode").querySelectorAll("button")) {
   btn.addEventListener("click", () => {
     const m = btn.dataset.mode as CompareMode;
@@ -989,7 +1106,8 @@ window.addEventListener("hashchange", () => {
   syncControls();
   pointB = h.b;
   comparing = pointB !== null;
-  compareMode = h.mode;
+  compareMode = h.b ? h.mode : "max";
+  source = h.source;
   editing = comparing ? "b" : "a";
   setOrigin(h.origin.lat, h.origin.lon, h.origin.name, "a");
   if (!fitBoth(true)) map.flyTo({ center: [h.origin.lon, h.origin.lat] });
@@ -1196,7 +1314,8 @@ $("share").addEventListener("click", async () => {
   // op een telefoon het deelmenu van het systeem, op de desktop kopiëren
   if (navigator.share && matchMedia("(pointer: coarse)").matches) {
     try {
-      const title = comparing && pointB
+      const title = source === "ic" ? "OV-afstand: reistijd naar het dichtstbijzijnde IC-station"
+        : comparing && pointB
         ? `OV-afstand: ${pointName(origin)} en ${pointName(pointB)} vergeleken`
         : `OV-afstand vanaf ${pointName(origin)}`;
       await navigator.share({ title, url });

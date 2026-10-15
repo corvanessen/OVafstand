@@ -114,12 +114,14 @@ Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De
 
 ```bash
 curl -o data/raw/gtfs-nl.zip http://gtfs.ovapi.nl/nl/gtfs-nl.zip
-python pipeline/extract_day.py 20261110
-python pipeline/build_graph.py 20261110
+python pipeline/extract_day.py 20261110     # werkdag
+python pipeline/extract_day.py 20261114     # zaterdag
+python pipeline/extract_day.py 20261115     # zondag
+python pipeline/build_graph.py 20261110 20261114 20261115
 python pipeline/export_web.py 20261110
 ```
 
-Kies een dinsdag of woensdag buiten de schoolvakanties, binnen de looptijd van de feed (zie `feed_info.txt`).
+Kies een dinsdag of woensdag buiten de schoolvakanties, binnen de looptijd van de feed (zie `feed_info.txt`), en de zaterdag en zondag daarna. De eerste datum is de basis. `build_graph.py` maakt één graaf voor alle dagen: de halteplekken en lijnen van de werkdag eerst, die van het weekend erachter. `export_web.py` schrijft `graph.bin` en `hours.bin.gz` voor de werkdag, en per weekenddag `day_<datum>.bin.gz` (cost en kind per kant, ±0,2 MB) en `hours_<datum>.bin.gz`. Met één datum krijg je alleen de werkdag, zoals vroeger.
 
 Het fietsraster hangt ook af van de halteplekken. Na een nieuwe GTFS-dag dus ook:
 
@@ -153,7 +155,11 @@ Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.1
 | `t` | kleurschaal tot (min) | 180 |
 | `f` | fietsen over de weg (1) of hemelsbreed × 1,3 (0) | 1 |
 | `u` | vertrektijd in minuten na middernacht (uurmodel), stappen van 30 | geen: gemiddelde werkdag 07–19 u |
+| `s` | fiets bij vertrek (1) of lopen (0) | 1 |
+| `a` | fiets bij aankomst (1) of lopen (0) | 0 |
 | `p2` | punt B bij vergelijken: `lat,lon,naam` (naam URL-gecodeerd) | geen: één vertrekpunt |
+| `dag` | `za` of `zo`: de dienstregeling van zaterdag of zondag | werkdag |
+| `k` | `ic` = de kaart naar het dichtstbijzijnde IC-station (het vertrekpunt blijft in de link) | de kaart vanaf het vertrekpunt |
 | `m` | bij vergelijken: `diff` = de stand "Verschil" (A − B) | "Voor ons allebei" (de langste van de twee) |
 
 Een waarde die het invoerveld niet kan tonen, wordt genegeerd. Oude links met alleen `#lat,lon,naam` werken nog.

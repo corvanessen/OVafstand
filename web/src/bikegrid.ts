@@ -5,7 +5,7 @@
 
 import { CELL, NX, NY, ROW_SCALE, X0, Y0, cellOf, mercX, mercY } from "./grid";
 import { cone, newRaster, VIA_DIRECT, type Raster } from "./raster";
-import { DETOUR, distM, fetchGz, type Graph, type Params, type Search } from "./router";
+import { DETOUR, distM, fetchGz, legs, type Graph, type Params, type Search } from "./router";
 
 const NONE = 15; // 4-bitswaarde voor "geen kant" / "geen knoop"
 const W = 10; // breedte van een bucket in de wachtrij, seconden
@@ -35,7 +35,8 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   const magic = new TextDecoder().decode(new Uint8Array(buf, 0, 6));
   const nx = dv.getUint16(8, true), ny = dv.getUint16(10, true), nDirs = dv.getUint16(12, true);
   const seedR = dv.getUint16(14, true), nA = dv.getUint32(16, true);
-  if (magic !== "FIETS1" || nx !== NX || ny !== NY || nA !== g.nArea) {
+  // nA < nArea: de graaf heeft er halteplekken bij (weekend); die hebben (nog) geen startcellen en tekenen kegels
+  if (magic !== "FIETS1" || nx !== NX || ny !== NY || nA > g.nArea) {
     console.warn("bike.bin.gz past niet bij dit raster of deze graaf; hemelsbreed model blijft",
       { magic, nx, ny, nA, nArea: g.nArea });
     return null;
@@ -54,7 +55,7 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   p += edges.length;
   const snaps = new Uint8Array(buf, p, Math.ceil(N / 2));
   p += snaps.length;
-  const seeds = new Uint8Array(buf, p, g.nArea * (2 * seedR + 1) ** 2);
+  const seeds = new Uint8Array(buf, p, nA * (2 * seedR + 1) ** 2);
 
   // knopen: cellen met een weg binnen 250 m
   const nibble = (a: Uint8Array, k: number) => (k & 1 ? a[k >> 1] & 15 : a[k >> 1] >> 4);
@@ -107,7 +108,7 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   const w = 2 * seedR + 1, seedK = w * w;
   const seedNode = new Int32Array(g.nArea * seedK).fill(-1);
   const seedDist = new Float32Array(g.nArea * seedK);
-  for (let a = 0; a < g.nArea; a++) {
+  for (let a = 0; a < nA; a++) {
     const c0 = cellOf(g.areaLat[a], g.areaLon[a]);
     if (c0 < 0) continue;
     const oi = c0 % NX, oj = Math.floor(c0 / NX);
@@ -118,6 +119,23 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
         const i = Math.min(NX - 1, Math.max(0, oi + di)), j = Math.min(NY - 1, Math.max(0, oj + dj));
         seedNode[a * seedK + s] = nodeOfCell[j * NX + i];
         seedDist[a * seedK + s] = byte * seedStep;
+      }
+    }
+  }
+  // halteplekken die er in bike.bin.gz nog niet waren (alleen in het weekend): zoals het vertrekpunt,
+  // hemelsbreed × 1,3 naar de middens van de cellen eromheen, plus de snapafstand
+  for (let a = nA; a < g.nArea; a++) {
+    const c0 = cellOf(g.areaLat[a], g.areaLon[a]);
+    if (c0 < 0) continue;
+    const oi = c0 % NX, oj = Math.floor(c0 / NX);
+    for (let dj = -seedR, s = 0; dj <= seedR; dj++) {
+      for (let di = -seedR; di <= seedR; di++, s++) {
+        const i = oi + di, j = oj + dj;
+        const n = i < 0 || j < 0 || i >= NX || j >= NY ? -1 : nodeOfCell[j * NX + i];
+        if (n < 0) continue;
+        const [clat, clon] = cellCenter(i, j);
+        seedNode[a * seedK + s] = n;
+        seedDist[a * seedK + s] = distM(g.areaLat[a], g.areaLon[a], clat, clon) * DETOUR + snapM[n];
       }
     }
   }
@@ -217,13 +235,12 @@ function cellCenter(i: number, j: number): [number, number] {
   return [(2 * Math.atan(Math.exp(y / 6378137)) - Math.PI / 2) * (180 / Math.PI), (x / 6378137) * (180 / Math.PI)];
 }
 
-/** Stap 1: fietsen vanaf het vertrekpunt over het raster (grens directMaxKm).
+/** Stap 1: fietsen (of lopen) vanaf het vertrekpunt over het raster (grens directMaxKm).
  *  Geeft per halteplek de begintijd voor de OV-zoektocht (Infinity = niet bereikbaar). */
 export function originAccess(bg: BikeGrid, g: Graph, lat: number, lon: number, p: Params): Float64Array {
   fromOrigin ??= new Run(bg.nNode);
   const r = fromOrigin;
-  const v = p.bikeKmh / 3.6;
-  const directMax = p.directMaxKm * 1000;
+  const { startV: v, startMax: directMax } = legs(p);
   r.reset(p.tMaxMin * 60);
   // het vertrekpunt kan overal liggen: start in de cellen eromheen, hemelsbreed × 1,3 naar het celmidden
   const oi = Math.floor((mercX(lon) - X0) / CELL), oj = Math.floor((mercY(lat) - Y0) / CELL);
@@ -261,15 +278,16 @@ export function originAccess(bg: BikeGrid, g: Graph, lat: number, lon: number, p
   return init;
 }
 
-/** Stap 2: van alle bereikte haltes verder fietsen over het raster (grens bikeMaxKm), en het raster vullen.
- *  Haltes zonder startcellen tekenen nog een hemelsbrede kegel, net als het vertrekpunt buiten het raster. */
-export function rasterizeBike(bg: BikeGrid, g: Graph, s: Search, lat: number, lon: number, p: Params): Raster {
+/** Stap 2: van alle bereikte haltes verder fietsen (of lopen) over het raster (grens bikeMaxKm), en het raster vullen.
+ *  Haltes zonder startcellen tekenen nog een hemelsbrede kegel, net als het vertrekpunt buiten het raster.
+ *  origin null: alleen vanaf de haltes (de kaart naar het dichtstbijzijnde IC-station); anders hoort er
+ *  een originAccess voor hetzelfde punt bij. */
+export function rasterizeBike(bg: BikeGrid, g: Graph, s: Search, origin: { lat: number; lon: number } | null, p: Params): Raster {
   fromStops ??= new Run(bg.nNode);
   const r = fromStops;
-  const o = fromOrigin!;
-  const v = p.bikeKmh / 3.6;
+  const o = origin ? fromOrigin!.time : null;
+  const { startV, startMax, endV: v, endMax: bikeMax } = legs(p);
   const tMax = p.tMaxMin * 60;
-  const bikeMax = p.bikeMaxKm * 1000;
   r.reset(tMax);
   const { seedK, seedNode, seedDist } = bg;
   const out = newRaster();
@@ -290,10 +308,10 @@ export function rasterizeBike(bg: BikeGrid, g: Graph, s: Search, lat: number, lo
   // knopen → cellen: de snapafstand (celknoop → celmidden) komt er nog bij
   let originOnGrid = false;
   for (let n = 0; n < bg.nNode; n++) {
-    const extra = bg.snapM[n] / v;
     const c = bg.cellOfNode[n];
-    if (o.time[n] < Infinity) originOnGrid = true;
-    const t1 = (o.time[n] + extra) / 60, t2 = (r.time[n] + extra) / 60;
+    const to = o ? o[n] : Infinity;
+    if (to < Infinity) originOnGrid = true;
+    const t1 = (to + bg.snapM[n] / startV) / 60, t2 = (r.time[n] + bg.snapM[n] / v) / 60;
     if (t1 < out.time[c] && t1 <= t2) {
       out.time[c] = t1;
       out.via[c] = VIA_DIRECT;
@@ -302,8 +320,8 @@ export function rasterizeBike(bg: BikeGrid, g: Graph, s: Search, lat: number, lo
       out.via[c] = r.src[n];
     }
   }
-  if (!originOnGrid) cone(out, mercX(lon), mercY(lat), 0, p.directMaxKm * 1000, v, VIA_DIRECT, tMax);
-  fillGaps(bg, out, v);
+  if (origin && !originOnGrid) cone(out, mercX(origin.lon), mercY(origin.lat), 0, startMax, startV, VIA_DIRECT, tMax);
+  fillGaps(bg, out, startV, v);
   return out;
 }
 
@@ -311,8 +329,9 @@ let fillDist: Float32Array | null = null;
 
 /** Cellen zonder knoop aanvullen vanuit de buren: afstandstransformatie in twee passes
  *  (8 buren, hemelsbreed × DETOUR), tot FILL_M van de dichtstbijzijnde gevulde cel.
+ *  Het tempo hangt af van het stuk: vanaf het vertrekpunt (vStart) of vanaf een halte (vEnd).
  *  Water wordt ook gevuld, maar dat valt op de kaart onder het watermasker. */
-function fillGaps(bg: BikeGrid, r: Raster, vMs: number) {
+function fillGaps(bg: BikeGrid, r: Raster, vStart: number, vEnd: number) {
   const { time, via } = r;
   const { nodeOfCell } = bg;
   const N = NX * NY;
@@ -321,7 +340,7 @@ function fillGaps(bg: BikeGrid, r: Raster, vMs: number) {
   // bron = elke cel met een tijd; knopen zonder tijd zijn niet bereikt en worden ook niet aangevuld
   // (anders ontstaat hemelsbreed alsnog een sluiproute over water of spoor)
   for (let c = 0; c < N; c++) fd[c] = time[c] < Infinity ? 0 : Infinity;
-  const k = DETOUR / vMs / 60; // minuten per meter
+  const kStart = DETOUR / vStart / 60, kEnd = DETOUR / vEnd / 60; // minuten per meter
   for (let pass = 0; pass < 2; pass++) {
     const fwd = pass === 0;
     for (let jj = 0; jj < NY; jj++) {
@@ -348,7 +367,7 @@ function fillGaps(bg: BikeGrid, r: Raster, vMs: number) {
         }
         if (bestN < 0 || bestD > FILL_M) continue;
         fd[c] = bestD;
-        const t = time[bestN] + (bestD - fd[bestN]) * k;
+        const t = time[bestN] + (bestD - fd[bestN]) * (via[bestN] === VIA_DIRECT ? kStart : kEnd);
         if (t < time[c]) {
           time[c] = t;
           via[c] = via[bestN];
