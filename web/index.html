@@ -40,6 +40,12 @@
         <section id="info" hidden></section>
 
         <div class="body">
+          <!-- soort kaart: reistijd vanaf een plek, of naar het dichtstbijzijnde IC-station -->
+          <div class="compare-mode map-kind" id="mapKind" role="group" aria-label="Soort kaart">
+            <button data-kind="point">Vanaf een plek</button>
+            <button data-kind="ic">Naar een IC-station</button>
+          </div>
+          <p class="compare-note" id="icNote" hidden></p>
           <div class="search">
             <input id="q" type="search" placeholder="Zoek adres, plaats of station…" autocomplete="off" />
             <ul id="results" hidden></ul>
@@ -139,6 +145,8 @@
             <p><b>Vergelijk</b> zet een tweede punt B op de kaart. Elke plek krijgt dan de kleur van de langste van de twee reistijden:
               waar is het voor ons allebei dichtbij? Handig als je samen een woonplek zoekt en elk ergens anders werkt.
               Met <b>Verschil</b> zie je wie er sneller is, en hoeveel: bruin is sneller vanaf A, petrol sneller vanaf B.</p>
+            <p><b>Naar een IC-station</b> kleurt elke plek naar de reistijd tot het dichtstbijzijnde station waar een Intercity stopt.
+              Zo zie je waar Nederland het slechtst bereikbaar is.</p>
             <p><b>Beperkingen.</b> Zonder tijdstip rekent de kaart met een gewone werkdag overdag (07–19 u). Het weekend zit er niet in.
               Overstappen kost geen extra tijd. Over de grens telt alleen het OV dat in de Nederlandse dienstregeling staat.</p>
             <p class="credits">OV-data: NDOV Loket / OVapi. Kaart en fietsnetwerk: © OpenStreetMap-bijdragers, OpenFreeMap.

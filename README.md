@@ -156,6 +156,7 @@ Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.1
 | `s` | fiets bij vertrek (1) of lopen (0) | 1 |
 | `a` | fiets bij aankomst (1) of lopen (0) | 0 |
 | `p2` | punt B bij vergelijken: `lat,lon,naam` (naam URL-gecodeerd) | geen: één vertrekpunt |
+| `k` | `ic` = de kaart naar het dichtstbijzijnde IC-station (het vertrekpunt blijft in de link) | de kaart vanaf het vertrekpunt |
 | `m` | bij vergelijken: `diff` = de stand "Verschil" (A − B) | "Voor ons allebei" (de langste van de twee) |
 
 Een waarde die het invoerveld niet kan tonen, wordt genegeerd. Oude links met alleen `#lat,lon,naam` werken nog.

@@ -261,11 +261,13 @@ export function originAccess(bg: BikeGrid, g: Graph, lat: number, lon: number, p
 }
 
 /** Stap 2: van alle bereikte haltes verder fietsen (of lopen) over het raster (grens bikeMaxKm), en het raster vullen.
- *  Haltes zonder startcellen tekenen nog een hemelsbrede kegel, net als het vertrekpunt buiten het raster. */
-export function rasterizeBike(bg: BikeGrid, g: Graph, s: Search, lat: number, lon: number, p: Params): Raster {
+ *  Haltes zonder startcellen tekenen nog een hemelsbrede kegel, net als het vertrekpunt buiten het raster.
+ *  origin null: alleen vanaf de haltes (de kaart naar het dichtstbijzijnde IC-station); anders hoort er
+ *  een originAccess voor hetzelfde punt bij. */
+export function rasterizeBike(bg: BikeGrid, g: Graph, s: Search, origin: { lat: number; lon: number } | null, p: Params): Raster {
   fromStops ??= new Run(bg.nNode);
   const r = fromStops;
-  const o = fromOrigin!;
+  const o = origin ? fromOrigin!.time : null;
   const { startV, startMax, endV: v, endMax: bikeMax } = legs(p);
   const tMax = p.tMaxMin * 60;
   r.reset(tMax);
@@ -289,8 +291,9 @@ export function rasterizeBike(bg: BikeGrid, g: Graph, s: Search, lat: number, lo
   let originOnGrid = false;
   for (let n = 0; n < bg.nNode; n++) {
     const c = bg.cellOfNode[n];
-    if (o.time[n] < Infinity) originOnGrid = true;
-    const t1 = (o.time[n] + bg.snapM[n] / startV) / 60, t2 = (r.time[n] + bg.snapM[n] / v) / 60;
+    const to = o ? o[n] : Infinity;
+    if (to < Infinity) originOnGrid = true;
+    const t1 = (to + bg.snapM[n] / startV) / 60, t2 = (r.time[n] + bg.snapM[n] / v) / 60;
     if (t1 < out.time[c] && t1 <= t2) {
       out.time[c] = t1;
       out.via[c] = VIA_DIRECT;
@@ -299,7 +302,7 @@ export function rasterizeBike(bg: BikeGrid, g: Graph, s: Search, lat: number, lo
       out.via[c] = r.src[n];
     }
   }
-  if (!originOnGrid) cone(out, mercX(lon), mercY(lat), 0, startMax, startV, VIA_DIRECT, tMax);
+  if (origin && !originOnGrid) cone(out, mercX(origin.lon), mercY(origin.lat), 0, startMax, startV, VIA_DIRECT, tMax);
   fillGaps(bg, out, startV, v);
   return out;
 }

@@ -820,7 +820,7 @@ Op branch `fase6-vergelijk`.
 
 ### 6.7 Nieuwe ideeën (15 okt 2026)
 
-Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4. Stap 1, "Verschil" en stap 2 zijn klaar; **volgende stap: stap 3** (slechtste bereikbaarheid).
+Van de gebruiker, met de keuzes die daarbij gemaakt zijn. Volgorde: eerst de kleine UI-dingen (stap 1), dan "Verschil" (6.5 afmaken), dan stap 2, 3 en 4. Stap 1, "Verschil", stap 2 en stap 3 (het centrum) zijn klaar; **volgende stap: stap 4** (zaterdag en zondag).
 
 1. **Rustiger op de desktop.** Hover toont alleen een klein label met de minuten. Een klik zet de reisinfo vast bovenaan het paneel, met een knop "Vertrek vanaf hier", net als tikken op de telefoon. Het paneel is in te klappen. Klaar, zie hieronder.
 2. **Fiets bij vertrek en bij aankomst als schakelaars.** Niet iedereen heeft aan beide kanten een fiets. Staat een schakelaar uit, dan loop je dat stuk (±5 km/u, kortere grens), over hetzelfde fietsraster met een andere snelheid. Dat is een benadering, want voetpaden waar je niet mag fietsen ontbreken. **Standaard: fiets bij aankomst uit** (keuze van de gebruiker). Dat is realistischer, maar de kaart wordt op het platteland merkbaar donkerder en oude deellinks geven een ander beeld. Nieuwe sleutels in de deellink.
@@ -866,6 +866,23 @@ Op branch `fase6-vergelijk`.
 
   Het aantal haltes hangt alleen af van het eerste stuk. De kaart wordt met lopen bij aankomst duidelijk vlekkeriger buiten de steden. Ook hemelsbreed (`f=0`), een ongeldige `s=2` en `hashchange` zijn getest. Er waren geen consolefouten.
 - **Nog doen:** `og.png` opnieuw maken, want de standaardkaart is veranderd.
+
+### Resultaten fase 6.7, stap 3: naar het dichtstbijzijnde IC-station (15 okt 2026)
+
+Op branch `fase6-vergelijk`.
+- **Keuze.** Als centrum tellen de **IC-stations** (keuze van de gebruiker). Dat zijn de halteplekken waar overdag een trein met een naam die met "Intercity" begint instapt. De internationale treinen (`IFF:NS_INT`) tellen niet mee. Zo komt de lijst rechtstreeks uit de dienstregeling: **95 stations**, allemaal in NL, ook Blauwnet (Almelo, Hengelo, Enschede, Raalte, Nijverdal).
+- **Rekenen.** Eén zoektocht met tijd 0 op alle IC-stations, daarna het laatste stuk over het fietsraster vanaf alle bereikte haltes. Er is geen vertrekpunt; `rasterize`/`rasterizeBike` nemen nu `origin: null`.
+  - Het is de reistijd *vanaf* het station; het netwerk is bijna symmetrisch.
+  - Het laatste stuk ligt aan de kant van de plek zelf. Het volgt daarom "Fiets bij vertrek" en `directMaxKm`, niet de instelling voor aankomst.
+  - Rekentijd: netwerk ±100–170 ms, kaart ±0,6–1,2 s (meer haltes dan vanaf één punt). Wisselen tussen de kaarten komt uit `cachedRun`.
+- **Bediening.** Bovenaan het paneel staat een schakelaar "Vanaf een plek" / "Naar een IC-station". Op de IC-kaart zijn de vertrekpunten, de markering en "+ Vergelijk" verborgen, en staat er een korte uitleg.
+  - Klikken of zoeken (ook de voorbeelden en "Mijn locatie") toont de reisinfo van die plek, met de route omgedraaid: van de plek naar het station. Voorbeeld: Ruinen → Meppel 48 min (fiets 13 min, bus 32, lopen 1 min).
+  - "Vertrek vanaf hier" gaat terug naar de gewone kaart, met die plek (en de gezochte naam) als vertrekpunt.
+  - De tijdschuif en het diagram ("Binnen 1 uur van een IC-station") werken ook.
+- **Deellink** `&k=ic`; het vertrekpunt blijft in de link staan. GoatCounter telt `kaart-ic`.
+- **Bugfix.** `.origin-row[hidden]` werd overschreven door `display: flex`; nu geldt `[hidden]` voor beide rijen.
+- **Getest** in headless Chrome: een deellink met `k=ic`, zoeken naar Ruinen, de tijdschuif, "Vertrek vanaf hier", heen en weer wisselen, en klikken in Brabant (Geldrop → Eindhoven C 29 min). Er waren geen consolefouten.
+- **Later (de andere smaken uit het plan):** de reistijd naar een voorziening (ziekenhuis, hoger onderwijs), en het aantal inwoners binnen 45 min (CBS-raster).
 
 ### 6.6 Volgorde
 

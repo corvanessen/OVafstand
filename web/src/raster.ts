@@ -51,11 +51,12 @@ export function cone(
   }
 }
 
-export function rasterize(g: Graph, s: Search, lat: number, lon: number, p: Params): Raster {
+/** origin null: alleen vanaf de haltes (de kaart naar het dichtstbijzijnde IC-station) */
+export function rasterize(g: Graph, s: Search, origin: { lat: number; lon: number } | null, p: Params): Raster {
   const r = newRaster();
   const { startV, startMax, endV, endMax } = legs(p);
   const tMax = p.tMaxMin * 60;
-  cone(r, mercX(lon), mercY(lat), 0, startMax, startV, VIA_DIRECT, tMax);
+  if (origin) cone(r, mercX(origin.lon), mercY(origin.lat), 0, startMax, startV, VIA_DIRECT, tMax);
   for (let a = 0; a < g.nArea; a++) {
     const t = s.dist[a];
     if (t >= tMax) continue;
