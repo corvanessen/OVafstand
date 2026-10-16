@@ -6,12 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "rolldown bench/check.ts --platform node -o ../data/check.mjs && node ../data/check.mjs"
   },
   "dependencies": {
     "maplibre-gl": "^6.14.0"
   },
   "devDependencies": {
+    "rolldown": "~1.2.12",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
   }

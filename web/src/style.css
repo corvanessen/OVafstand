@@ -59,7 +59,7 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 #panel.folded { width: 280px; }
 #panel.folded .sub,
 #panel.folded .body > :not(.origin-row):not(.legend-wrap):not(.time-row.active):not(.compare-note):not(.compare-mode) { display: none; }
-#panel.folded :is(.time-toggle, .chart) { display: none; }
+#panel.folded :is(.time-toggle, .chart, .tt-pick, .time-note) { display: none; }
 #panel.folded header { padding-bottom: 2px; }
 
 .search { position: relative; margin-top: 6px; }
@@ -153,6 +153,9 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 
 .time-row { margin-top: 12px; }
 .time-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.time-toggle[hidden], .time-note[hidden] { display: none; }
+.tt-pick { margin-top: 8px; }
+.time-note { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
 .time-ctl { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .time-ctl[hidden] { display: none; }
 .time-ctl input { flex: 1; accent-color: var(--accent); }
@@ -175,6 +178,8 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 .chart-note { font-size: 11px; color: var(--muted); }
 
 #about p { margin: 0 0 8px; line-height: 1.45; }
+#about ul { margin: 0 0 8px; padding-left: 18px; line-height: 1.45; }
+#about li + li { margin-top: 4px; }
 #about .credits { color: var(--muted); font-size: 12px; }
 #about + .status { margin-top: 10px; }
 
@@ -294,7 +299,7 @@ ol.legs li.t4 { border-color: #00a3c4; }   /* veer */
   /* ingeklapt: alleen het vertrekpunt en de legenda */
   #panel[data-sheet="collapsed"] header,
   #panel[data-sheet="collapsed"] .body > :not(.origin-row):not(.legend-wrap):not(.time-row.active) { display: none; }
-  #panel[data-sheet="collapsed"] :is(.time-toggle, .chart) { display: none; }
+  #panel[data-sheet="collapsed"] :is(.time-toggle, .chart, .tt-pick, .time-note) { display: none; }
   .play-btn { width: 44px; height: 44px; }
   .time-toggle { min-height: 44px; }
   #panel[data-sheet="collapsed"] .origin-row { margin-top: 0; }

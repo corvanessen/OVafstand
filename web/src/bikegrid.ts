@@ -17,10 +17,13 @@ export interface BikeGrid {
   cellOfNode: Int32Array;
   nodeOfCell: Int32Array; // -1 = geen knoop (water, buitenland, ver van een weg)
   snapM: Float32Array; // per knoop: afstand celknoop → celmidden, meter
-  // kanten in CSR-vorm (beide richtingen): die van knoop u staan op first[u] .. first[u+1]
+  // kanten in CSR-vorm (beide richtingen): die van knoop u staan op first[u] .. first[u+1], één byte per kant:
+  // richting (bovenste 4 bits, 0–7 vooruit, 8–15 terug) en lengteniveau (onderste 4). De buur is
+  // nodeOfCell[cel + step[richting]], de lengte in echte meters lenTab[rij × 256 + byte] (rij van u).
   first: Uint32Array;
-  nbr: Int32Array;
-  lenM: Uint16Array; // echte meters
+  edge: Uint8Array;
+  step: Int32Array;
+  lenTab: Uint16Array;
   // startcellen per halteplek: k = (2R+1)² knopen met de afstand halte → knoop; knoop -1 = geen
   seedK: number;
   seedNode: Int32Array;
@@ -36,9 +39,10 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   const nx = dv.getUint16(8, true), ny = dv.getUint16(10, true), nDirs = dv.getUint16(12, true);
   const seedR = dv.getUint16(14, true), nA = dv.getUint32(16, true);
   // nA < nArea: de graaf heeft er halteplekken bij (weekend); die hebben (nog) geen startcellen en tekenen kegels
-  if (magic !== "FIETS1" || nx !== NX || ny !== NY || nA > g.nArea) {
+  // nDirs ≤ 8: vooruit en terug moeten samen in 4 bits passen
+  if (magic !== "FIETS1" || nx !== NX || ny !== NY || nA > g.nArea || nDirs > 8) {
     console.warn("bike.bin.gz past niet bij dit raster of deze graaf; hemelsbreed model blijft",
-      { magic, nx, ny, nA, nArea: g.nArea });
+      { magic, nx, ny, nDirs, nA, nArea: g.nArea });
     return null;
   }
   let p = 20;
@@ -72,9 +76,26 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   }
 
   // kanten: het bestand heeft er 8 per cel ("vooruit"); de 8 terug zijn dezelfde, vanuit de buur.
-  // Eerst tellen, dan vullen (CSR), met de lengte al in echte meters.
+  // Eerst tellen, dan vullen (CSR). De buur en de lengte staan niet per kant, die volgen uit de richting.
   const off = dirs.map(([di, dj]) => dj * NX + di);
   const unit = dirs.map(([di, dj]) => Math.hypot(di, dj) * CELL);
+  const step = new Int32Array(16);
+  for (let d = 0; d < nDirs; d++) {
+    step[d] = off[d];
+    step[d + nDirs] = -off[d];
+  }
+  // lengte per rij, richting en niveau: mercator-meter → echte meter met de rij van de kant "vooruit"
+  // (voor een kant terug is dat de rij van de buur)
+  const lenTab = new Uint16Array(NY * 256);
+  for (let j = 0; j < NY; j++) {
+    for (let d = 0; d < nDirs; d++) {
+      const back = ROW_SCALE[Math.min(NY - 1, Math.max(0, j - dirs[d][1]))];
+      for (let l = 0; l < 15; l++) {
+        lenTab[j * 256 + ((d << 4) | l)] = Math.min(65535, Math.round(unit[d] * levels[l] * ROW_SCALE[j]));
+        lenTab[j * 256 + (((d + nDirs) << 4) | l)] = Math.min(65535, Math.round(unit[d] * levels[l] * back));
+      }
+    }
+  }
   const deg = new Uint32Array(nNode + 1);
   for (let n = 0; n < nNode; n++) {
     const c = cellOfNode[n];
@@ -87,20 +108,15 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
   const first = new Uint32Array(nNode + 1);
   for (let n = 0; n < nNode; n++) first[n + 1] = first[n] + deg[n];
   const fill = first.slice(0, nNode);
-  const nbr = new Int32Array(first[nNode]);
-  const lenM = new Uint16Array(first[nNode]);
+  const edge = new Uint8Array(first[nNode]);
   for (let n = 0; n < nNode; n++) {
     const c = cellOfNode[n];
-    const scale = ROW_SCALE[Math.floor(c / NX)]; // de kant ligt in de rij van n: mercator-meter → echte meter
     for (let d = 0; d < nDirs; d++) {
       const l = nibble(edges, c * nDirs + d);
       const m = nodeOfCell[c + off[d]];
       if (l === NONE || m < 0) continue;
-      const len = Math.min(65535, Math.round(unit[d] * levels[l] * scale));
-      nbr[fill[n]] = m;
-      lenM[fill[n]++] = len;
-      nbr[fill[m]] = n;
-      lenM[fill[m]++] = len;
+      edge[fill[n]++] = (d << 4) | l;
+      edge[fill[m]++] = ((d + nDirs) << 4) | l;
     }
   }
 
@@ -139,7 +155,7 @@ export async function loadBikeGrid(base: string, g: Graph): Promise<BikeGrid | n
       }
     }
   }
-  return { nNode, cellOfNode, nodeOfCell, snapM, first, nbr, lenM, seedK, seedNode, seedDist };
+  return { nNode, cellOfNode, nodeOfCell, snapM, first, edge, step, lenTab, seedK, seedNode, seedDist };
 }
 
 /** Dijkstra-toestand, hergebruikt tussen berekeningen (scheelt geheugen en GC) */
@@ -197,7 +213,7 @@ class Run {
    *  De fietsgrens geldt per label: de eerste bron die een knoop bereikt, bepaalt de gefietste afstand. */
   run(g: BikeGrid, vMs: number, bikeMax: number) {
     const { time, bike, src, head, tMax } = this;
-    const { first, nbr, lenM } = g;
+    const { first, edge, step, lenTab, cellOfNode, nodeOfCell } = g;
     const invV = 1 / vMs;
     for (let b = 0; b < head.length; b++) {
       while (head[b] !== -1) {
@@ -208,12 +224,15 @@ class Run {
         if (((t0 / W) | 0) !== b) continue; // verouderd: intussen in een eerdere bucket verwerkt
         const b0 = bike[u];
         const s0 = src[u];
+        const cu = cellOfNode[u];
+        const row = ((cu / NX) | 0) << 8;
         for (let k = first[u], end = first[u + 1]; k < end; k++) {
-          const m = lenM[k];
+          const x = edge[k];
+          const m = lenTab[row | x];
           const bb = b0 + m;
           if (bb > bikeMax) continue;
           const t = t0 + m * invV;
-          const w = nbr[k];
+          const w = nodeOfCell[cu + step[x >> 4]];
           if (t < time[w] && t < tMax) {
             time[w] = t;
             bike[w] = bb;

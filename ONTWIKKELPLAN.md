@@ -162,8 +162,8 @@ OSM  ─┴─> fietsrouting ─> fietstabellen per tegel ──>    bike/{z}/{x
 | **1. Kernmotor** | Graaf voor A+ bouwen, exporteren als binair bestand. Dijkstra in TS, plus een test tegen bekende reizen (vergelijken met 9292 / NS-planner). | `graph.bin` en een routing-module met tests |
 | **2. MVP-website** | Kaart, klikken voor het startpunt, PDOK-zoekbalk, heatmap met hemelsbrede fietsafstand (kegeltruc), legenda, tooltip met de reistijd en de route ("fiets 6 min → IC 34 min → fiets 4 min") | Werkende site voor heel NL |
 | **3. Realistisch fietsen** | Fietstabellen via OSRM, tegels opslaan, water en veerboten goed meenemen | Correcte randen bij water, nauwkeurig dichtbij |
-| **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". | Tweede modus |
-| **5. Grensregio** | België en een uitsnede van Duitsland samenvoegen in de GTFS (stop-ID's laten matchen bij grensstations) | Kaart tot ongeveer 50 km over de grens |
+| **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". Stap 1 en 2 zijn klaar: "Echte vertrektijden" met de mediaan over 12 vertrekken. | Tweede modus |
+| **5. Grensregio** | België en een uitsnede van Duitsland samenvoegen in de GTFS (stop-ID's laten matchen bij grensstations). Verkend, zie "Verkenning fase 4 en 5". | Kaart tot ongeveer 50 km over de grens |
 | **6. Gebruikers en bereik** | Bezoekers meten, deellink met instellingen, Open Graph, uitleg, mijn locatie, bottom sheet op mobiel, dag-animatie (uurmodel), twee vertrekpunten vergelijken. Later: overstapstraf, alleen trein. Zie "Fase 6 in detail". | Begrijpelijk en deelbaar voor bezoekers zonder voorkennis |
 
 ### Risico's
@@ -247,7 +247,11 @@ Fase 3, realistisch fietsen:
 - ~~6.4 deel 2: frames vooruit rekenen, overgang, diagram.~~ Klaar, zie "Resultaten fase 6.4, deel 2".
 - ~~6.5 deel 1: twee vertrekpunten vergelijken, "Voor ons allebei".~~ Klaar, zie "Resultaten fase 6.5, deel 1".
 - ~~6.7 stap 1: het paneel inklappen en de reisinfo vastzetten na een klik.~~ Klaar, zie "Resultaten fase 6.7, stap 1".
-- **Nu:** de stand "Verschil" (A − B, tweekleurig rond 0) met een schakelaar en `&m=diff`. Daarna de rest van 6.7 in de volgorde daar. Fase 5 (GTFS van BE en DE) kan ook; het fietsraster is er al klaar voor.
+- ~~6.5 deel 2 ("Verschil") en de rest van 6.7.~~ Klaar, zie de resultaten van 6.5 deel 2 en 6.7 stap 2–4.
+- ~~Fase 4 en 5 verkennen: grootte, rekentijd, feeds.~~ Klaar, zie "Verkenning fase 4 en 5".
+- ~~Fase 4, stap 1: CSA in de worker als derde stand.~~ Klaar, zie "Resultaten fase 4, stap 1".
+- ~~Fase 4, stap 2: de keuze duidelijk maken.~~ Klaar, zie "Resultaten fase 4, stap 2".
+- **Nu:** fase 4, stap 3 (zie daar). Daarnaast bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -921,3 +925,273 @@ Eerst meten en delen, dan de grote features.
 Stap 4 en 5 kunnen in beide volgordes.
 
 **Open vraag:** een eigen domeinnaam? Dat kan met GitHub Pages.
+
+## Verkenning fase 4 en 5 (15 okt 2026)
+
+Op branch `verkenning-4-5`. Alleen gemeten; de web-app is niet veranderd.
+
+### Fase 4: dienstregeling met CSA
+
+`pipeline/export_connections.py 20261110` maakt de connections: elke hop van een rit van halteplek naar volgende halteplek (dezelfde halteplekken als `graph.bin`). De benchmark is `web/bench/csa_bench.ts`: een CSA in Node met 0 min overstap, lopen over de loopkanten van de graaf (één stap) en hemelsbreed fietsen naar de eerste halte.
+
+**Aantal.** 2.100.707 connections op een werkdag (fase 0 telde 2,1 mln). De spits telt ±145k per uur. Het venster 07–10 u telt 420k.
+
+**Grootte per dag:**
+
+| Codering | Ruw | gzip |
+|---|---|---|
+| (a) 5 × uint32 per connection | 42,0 MB | 17,6 MB |
+| (b) kolommen: Δvertrek u8, rijtijd u16, halteplekken u16, rit u32 | 25,2 MB | 12,2 MB |
+| (c) per rit: halteplekken plus tijden ten opzichte van het eerste vertrek | 11,8 MB | **0,78 MB** |
+| (d) patronen (zelfde haltes en tijden; 20.691 voor 120.290 ritten) plus per rit (patroon, vertrek) | 3,5 MB | **0,56 MB** |
+
+Per rit of per patroon opslaan is dus klein genoeg. De browser bouwt de gesorteerde array dan zelf; ruw is dat ±20 MB in het geheugen.
+
+**Rekentijd** (Node, één run, venster 3 uur):
+
+| Vertrek | CSA | A+ (Dijkstra) |
+|---|---|---|
+| Utrecht C | 8–12 ms (22:00: 3 ms) | 35–43 ms |
+| Ruinen | 6 ms | 13–24 ms |
+| Maastricht | 6 ms | 15–58 ms |
+| mediaan over 12 vertrekken (08:00–08:55, elke 5 min) | 100–140 ms | |
+
+CSA is dus 3–5 × sneller dan de huidige Dijkstra. Ook de mediaan over 12 vertrekmomenten per frame past binnen het budget van de tijdschuif.
+
+**Reistijden** (min, vanaf Utrecht C met de fiets, vertrek rond 08:00):
+
+| Naar | A (rijtijd) | A+ | uurmodel 08:00 | CSA 08:00 | CSA 08:07 | CSA mediaan 08:00–08:55 |
+|---|---|---|---|---|---|---|
+| Amsterdam C | 27 | 34 | 33 | 35 | 28 | 35 |
+| Rotterdam C | 37 | 41 | 41 | 40 | 48 | 45 |
+| Zwolle | 54 | 62 | 62 | 71 | 64 | 66 |
+| Groningen | 111 | 123 | 123 | 132 | 125 | 127 |
+| Maastricht | 112 | 122 | 121 | 120 | 133 | 130 |
+| haltes binnen 1 uur | 11.612 | 5.014 | 4.841 | 5.159 | 4.910 | 4.427 |
+
+- **Correctie (fase 4, 15 okt).** Een eerdere versie van deze tabel gaf Groningen 120–153 min. De benchmark zocht de bestemming op het begin van de naam en vond "Groningen, Eikenlaan", een bushalte. Met de exacte naam geeft model A weer precies de validatie (111 en 112). Ook de conclusie dat A+ optimistisch is voor lange reizen vervalt.
+- **Controle.** Vanaf de halteplek Utrecht Centraal, zonder fiets, is Groningen 117 min bij vertrek om 08:15 en 132 min om 08:00 (een directe IC van 111 min, plus wachten). Amsterdam C kost 30–35 min.
+- **De mediaan van CSA ligt dicht bij A+ en het uurmodel** (hooguit ±5–8 min), maar per vertrekmoment springt CSA 5–15 min.
+- **Op het platteland** (Ruinen) springt de CSA sterk per vertrekmoment (13.185 tegen 14.506 haltes binnen 3 uur, met 7 min verschil). De mediaan per frame is dus nodig, zoals het plan al zei.
+
+**Nog niet gemeten:** ritten van de vorige dag na middernacht, een overstaptijd en fietsen tussen haltes (ULTRA).
+
+### Fase 5: grensregio
+
+`pipeline/border_survey.py <zip> [datum]` telt per feed, op een dinsdag binnen de geldigheid van de feed:
+- de connections in de rasterbox (3,2–7,4 O, 50,6–53,7 N);
+- de connections in een strook van 20 of 50 km rond de dichtstbijzijnde binnenlandse NL-halte;
+- de overlap met de NL-feed.
+
+Ter controle telt het op de NL-feed zelf 2.099.140 connections.
+
+**Feeds:**
+
+| Feed | Bron | Toegang | Geldig | Zip |
+|---|---|---|---|---|
+| NMBS/SNCB | `gtfs.irail.be/nmbs/gtfs/latest.zip` (iRail) | vrij | t/m 12 dec 2026 | 30 MB |
+| TEC | `opendata.tec-wl.be/Current%20GTFS/TEC-GTFS.zip` | vrij | t/m 31 dec 2026 | 80 MB |
+| De Lijn | officieel alleen op aanvraag; oude kopie via Mobility Database (`mdb-684`) | **aanvraag** | kopie: t/m 30 sep 2026 | 216 MB |
+| MIVB/STIB | officieel via het Opendatasoft-portaal (export nu 404); oude kopie `mdb-1088` | **account** | kopie: t/m 12 apr 2026 | 14 MB |
+| Duitsland | `download.gtfs.de/germany/free/latest.zip` (heel DE; `nv_free`, `rv_free` en `fv_free` apart) | vrij, licentie nog nakijken | ±1 maand vooruit, wekelijks nieuw | 290 MB |
+
+**Connections per werkdag** (de NL-feed heeft er 2,10 mln):
+
+| Feed | Rasterbox | Strook 50 km | Strook 20 km | Halteplekken (box / 50 km / 20 km) |
+|---|---|---|---|---|
+| De Lijn | 848k | 755k | 363k | 22.111 / 19.808 / 8.199 |
+| MIVB | 373k | 303k | 0 | 2.198 / 1.719 / 0 |
+| NMBS | 35k | 26k | 7k | 365 / 280 / 109 |
+| TEC | 247k | 183k | 170k | 9.112 / 5.355 / 4.194 |
+| Duitsland | 2.422k | 1.193k | 332k | 23.693 / 14.485 / 6.380 |
+| **Samen** | **3,93 mln (+187%)** | **2,46 mln (+117%)** | **0,87 mln (+42%)** | **57.500 / 41.600 / 18.900** |
+
+**Overlap met de NL-feed:**
+- **De NL-feed bevat al 2.676 ritten van De Lijn op 420 grenslijnen, met hun hele route door Vlaanderen (6.260 haltes).** De 665 haltes buiten NL uit fase 0 zijn dus te laag geteld. Van de ritten van De Lijn op gedeelde halteplekken zijn er 2.635 dubbel (alle vertrekken op dezelfde minuut).
+- Verder dubbel: 132 treinen van de NMBS, 111 ritten van TEC (lijnen bij Maastricht) en ±2.450 van de Duitse ritten (Arriva in Limburg, Aken, DB en NS over de grens).
+- **Koppelen gaat goed op afstand plus naam.** Voorbeelden: Bruxelles-Nord = Brussel-Noord, Anvers-Central = Antwerpen-Centraal, Wuppertal Hbf, Köln-Ehrenfeld. Let op met namen in twee talen: TEC "BOIRS" heet in de NL-feed "Beurs", en "LIEGE" heet "Luik". Afstand alleen (150 m) koppelt die toch.
+- Bij het samenvoegen moet per vervoerder één bron gelden. De ritten van De Lijn, NMBS en DB uit de NL-feed vallen dan weg. Anders telt een lijn dubbel, en dat geeft een te kort interval.
+
+**Gevolgen voor de graaf en de app:**
+- **Halteplekken.** Met de strook van 50 km komen er ±41.600 bij, samen ±76.000. Dat past niet meer in **uint16**, dus codering (b) hierboven gaat dan niet. Kijk ook `lineRoute` (uint16) na, want het aantal routes groeit mee. Met 20 km blijft het ±53.600.
+- **Grootte.** `graph.bin` (3,1 MB), `meta.json` (1,0 MB) en `hours*.bin.gz` (1,4 MB) groeien ongeveer mee met de connections. Bij 20 km is dat +40–60%, bij 50 km ruim het dubbele.
+- **Rekentijd** (geschat, niet gemeten). De Dijkstra wordt ongeveer evenredig trager: bij 50 km ±70–90 ms vanaf Utrecht C.
+- **Fietsraster.** Het hoeft niet te veranderen; de rasterbox dekt alles. Wel zijn de startcellen per halteplek opnieuw nodig (OSRM, `build_bike_grid.py`).
+- **`extract_day.py`** leest nu alleen `calendar_dates.txt`. De buitenlandse feeds hebben ook `calendar.txt` nodig, zoals `services_on` in `border_survey.py`.
+
+### Advies
+
+1. **Eerst fase 4.**
+   - De data is er, er is geen externe afhankelijkheid, en de metingen zijn gunstig: 0,6–0,8 MB per dag, en 6–12 ms per run.
+   - CSA kan een derde stand worden naast "gemiddelde dag" en "uurmodel". Bij de tijdschuif dan per frame de mediaan over meerdere vertrekmomenten.
+   - Het uurmodel kan blijven als snelle stand voor de animatie.
+2. **Fase 5 begint met de strook van 20 km.**
+   - Begin met NMBS, TEC en Duitsland (`gtfs.de`): die zijn vrij te downloaden.
+   - Voor De Lijn en MIVB nu al toegang aanvragen. MIVB valt pas binnen de strook van 50 km (Brussel).
+   - De Lijn rond de grens zit voor een groot deel al in de NL-feed.
+   - Pas bij 50 km is het werk voor uint32 halteplek-indexen nodig.
+
+### Resultaten fase 4, stap 1: "Volgens de dienstregeling" (15 okt 2026)
+
+Op branch `fase4` (vanaf `verkenning-4-5`).
+
+**Pijplijn.** `export_web.py` schrijft per dag `conn_<datum>.bin.gz`, met per rit:
+- het begin, het aantal haltes en de route;
+- per halte de halteplek, de aankomst ten opzichte van het begin, de stilstand en de vlaggen (niet in- of uitstappen).
+
+| Dag | Ritten | Haltes | gzip |
+|---|---|---|---|
+| werkdag | 120.290 | 2.224.326 | 0,84 MB |
+| zaterdag | 89.342 | 1.584.811 | 0,54 MB |
+| zondag | 73.125 | 1.220.048 | 0,41 MB |
+
+- De stilstand is uint16: bij 3.932 haltes is die langer dan 255 s. De vertrektijd zelf als offset maakte het bestand 1,16 MB.
+- `graph.bin` en de bestanden van het uurmodel blijven byte voor byte gelijk; alleen `meta.json` krijgt `days[k].conn`.
+
+**Browser** (`csa.ts`):
+- **Laden.** `loadTimetable` laadt de dag pas als het vinkje aan staat, en sorteert met een counting sort per vertrekseconde.
+  - Werkdag: 2.138.690 connections. Dat is inclusief kopieën vóór 00:00 van de ritten na 24:00, als de nacht van dezelfde soort dag.
+  - In Node kost het laden 410 ms (zondag 230 ms). In het geheugen is het ±36 MB.
+- **Rekenen.** `csaSearch` doet 12 scans, elke 5 min van −15 tot +40 min rond het gekozen half uur. Dat is hetzelfde venster als het uurmodel.
+  - Per halteplek telt de onderste mediaan (de 6e van 12), en de scan die die gaf.
+  - Lopen gaat over de loopkanten van de graaf, ook in meer stappen; 0 min overstap.
+  - Een vertrek vóór 00:00 (bij 00:00 en 00:30) valt in de avond van dezelfde dag.
+- **Reisinfo.** `csaPath` rekent de scan van de mediaan voor die halteplek opnieuw (±10 ms) en leest de route terug: aankomst-connection, de instapconnection van die rit, en loopstukken. De wachttijd is het verschil tussen aankomst op de halte en vertrek van de rit.
+- **Worker.** `Params.timetable`. `prepareDay` laadt de dienstregeling, en zet `timetable` uit als die ontbreekt. Het diagram en het afspelen rekenen ook met CSA.
+- **UI.** Een vinkje "Volgens de dienstregeling" onder de tijdschuif, alleen zichtbaar met een vertrektijd. (In stap 2 vervangen door twee knoppen, zie daar.) De voetregel krijgt "(dienstregeling)". De uitleg heeft een alinea erbij. Deellink `&r=1`, en GoatCounter telt `dienstregeling`.
+
+**Metingen** (vanaf Utrecht C met de fiets; tussen haakjes het uurmodel):
+
+| Vertrek | Rekentijd (Node, 12 scans) | Haltes binnen 1 uur | Amsterdam C | Rotterdam C | Zwolle | Groningen |
+|---|---|---|---|---|---|---|
+| werkdag 08:00 | 160 ms | 4.860 (4.841) | 31 (33) | 45 (41) | 61 (62) | 122 (123) |
+| werkdag 00:00 | 15 ms | 1.645 (1.680) | 35 (38) | 50 (96) | 66 (62) | – (123) |
+| werkdag 23:00 | 39 ms | 2.856 (2.998) | 35 (36) | 50 (45) | 61 (62) | 122 (123) |
+| zondag 08:00 | 79 ms | 2.339 (2.487) | 35 (37) | 50 (49) | 66 (61) | 127 (122) |
+
+- **Overdag** ligt CSA dicht bij het uurmodel.
+- **'s Nachts verschilt het.** Het uurmodel geeft om 00:00 Groningen in 123 min: de wachttijd geldt per corridor (Utrecht–Amersfoort heeft nachttreinen), maar de rijkant rekent alsof die rit doorgaat naar Groningen. CSA ziet dat er na de laatste IC niets meer gaat. Dit is precies de "Prijs" uit 6.4.
+- **Route naar Groningen om 08:00:** fiets 0,3 min naar Utrecht Centraal, Intercity 111 min met 10,7 min wachten (vertrek 08:40, de scan van de mediaan). Samen 122,0 min, gelijk aan de mediaan.
+- **In Chrome** (headless, dev-server):
+  - werkdag 08:00–17:00: netwerk 90–130 ms, kaart 150–260 ms; het uurmodel doet 35–55 ms. De eerste keer kost 460 ms extra, voor het laden.
+  - De reisinfo bij Nijkerk: "Fiets 1 min → Sprinter 33 min +10 wacht → Bus 142 4 min +1 wacht → Loop 10 min" = 59 min (het uurmodel: 1 u 06).
+  - Wisselen, zondag 23:00, afspelen (frames tot 03:30), de deellink `&r=1`: er waren geen consolefouten.
+
+### Resultaten fase 4, stap 2: duidelijk voor bezoekers (15 okt 2026)
+
+Het vinkje "Volgens de dienstregeling" bleek niet te begrijpen. Het klonk alsof de kaart zonder vinkje níet met de dienstregeling rekent. Het venster van twaalf vertrekken was ook nergens te zien. De keuze blijft (gebruiker, 15 okt 2026), maar is anders gebracht:
+- **Twee knoppen** onder de schuif: "Gemiddelde wachttijd" en "Echte vertrektijden" (dezelfde stijl als Werkdag / Zaterdag / Zondag).
+- **Een regel onder de knoppen** die meeschuift met de klok:
+  - "Bij elke overstap telt de gemiddelde wachttijd tussen 07:45 en 08:45."
+  - "Je vertrekt 12 keer, om de 5 min tussen 07:45 en 08:40. Elke plek toont de middelste reistijd."
+- **Kloktijden in de reisinfo** bij echte vertrektijden:
+  - onder het totaal: "middelste van 12 reizen: vertrek 08:40, aankomst 09:39";
+  - per rit: "08:51 Utrecht Centraal → 09:24 Nijkerk".
+  - Op de IC-kaart (de route andersom) staan geen kloktijden.
+- **De voetregel** zegt "werkdag, vertrek 08:00, echte vertrektijden" of "…, gemiddelde wachttijd".
+- **De uitleg** beschrijft beide manieren in gewone woorden, met een voorbeeld (elke 10 min een trein = 5 min wachten), en zegt waarom echte vertrektijden iets strenger zijn.
+- **Getest** in headless Chrome: wisselen, de deellink `&r=1` en de reisinfo (de tijden tellen op: 08:40 + 1 fiets + 10 wacht = 08:51). Er waren geen consolefouten.
+
+**Ook gemeten** (`web/bench/coverage.ts`, vanaf Utrecht C, km² binnen 3 uur): de gemiddelde dag 35.142 km² met de fiets bij aankomst, 22.068 lopend. Het uurmodel geeft 34.637 en 21.360, echte vertrektijden 32.392 en 19.556. Dat de kaart kleiner oogt dan vroeger, komt vooral door "Fiets bij aankomst" (standaard uit sinds 6.7 stap 2, −37%). Echte vertrektijden halen er nog 6–8% af.
+
+**Volgende stap (fase 4, stap 3):**
+1. Testen op een telefoon: het geheugen (±36 MB extra), de laadtijd en de twee knoppen in de bottom sheet.
+2. Later: een overstaptijd als instelling, en fietsen tussen haltes bij een overstap (ULTRA).
+
+### Geheugenmeting (15 okt 2026)
+
+Gemeten met `web/bench/mem_check.ts` (Node: bytes per array, zoals de worker laadt) en Chrome headless via CDP (productiebuild, na een GC in elke worker, vanaf Utrecht C).
+
+**In Chrome** (renderer = pagina + alle workers, privégeheugen):
+
+| Stap | Renderer | Onze worker | GPU-proces |
+|---|---|---|---|
+| Start (werkdag, gemiddelde wachttijd) | 278 MB | 144 MB | 180 MB |
+| + vertrektijd (uurmodel) | 265 MB | 176 MB | 222 MB |
+| + echte vertrektijden (werkdag) | 305 MB | 210 MB | 211 MB |
+| + zaterdag en zondag bekeken | 425 MB | 308 MB | 231 MB |
+| vergelijken met Amsterdam, 20 s afspelen | 464 MB | 403 MB | 246 MB |
+| gestopt | 410 MB | 330 MB | 207 MB |
+
+De JS-heap van de pagina is maar 7–9 MB. De rest buiten onze worker (±130 MB) is Chrome zelf, MapLibre en de tegels. Het GPU-proces (tegels, twee heatmaplagen van 6 MB) valt bij software-rendering ook in het werkgeheugen.
+
+**Wat de worker vasthoudt** (Node):
+
+| Onderdeel | Grootte | Wanneer |
+|---|---|---|
+| Fietsraster: `nbr` 41 MB, `lenM` 21 MB, `nodeOfCell` 6, `first`/`cellOfNode`/`snapM` 3,7 elk, startcellen 2,4 | **82 MB** | altijd |
+| Per kaart: raster (`time` + `via`, 6 + 6 MB) plus zoektocht 1–1,4 MB | **13,5 MB per run** | `runCache` (4) en `results` (4 id's × 1–2 runs): tot ±13 runs ≈ 175 MB bij afspelen met vergelijken |
+| Dienstregeling: werkdag 35, za 25, zo 19 MB (`dep`, `arr`, `trip` elk 4 B per connection) | **80 MB** | eenmaal geladen blijft elke dag staan |
+| Fiets-Dijkstra (`fromOrigin`, `fromStops`): `time`/`bike`/`src` 11,6 MB + wachtrij 8 MB elk | **39 MB** (47 met fiets bij aankomst 15 km: de wachtrij verdubbelt één keer) | na de eerste kaart |
+| Uurmodel 3,9 MB, cost/kind 0,9 MB per dag | 14 MB | per dag na een vertrektijd |
+| Graaf + `boardRow` | 7 MB | altijd |
+| `fillDist` | 6 MB | na de eerste kaart |
+
+**Kansen, op volgorde van winst:**
+1. ~~**Fietsraster zonder `nbr`/`lenM`** (−50 MB, altijd).~~ Klaar (16 okt 2026, zie "Geheugen, deel 1" hieronder): 82 → 31 MB.
+2. ~~**Kleiner raster per run**, minder runs bewaren.~~ Klaar (16 okt 2026, zie "Geheugen, deel 2"). `time` als Uint16 in 0,1 min (nog −3 MB per run) is niet gedaan: dan verandert de kaart een klein beetje.
+3. ~~**Alleen de dienstregeling van de gekozen dag houden**, `arr` als Uint16-duur.~~ Klaar (16 okt 2026, zie "Geheugen, deel 3").
+4. **Fiets-Dijkstra**: `bike` als Uint16 (meters, < 65 km) en `src` als Uint16 (−4 MB elk).
+5. Profielruns (diagram) maken elke keer een raster van 12 MB aan dat meteen weg kan: hergebruiken scheelt GC, niet de piek.
+
+### Opruimen van de code (15 okt 2026, branch `opruimen`)
+
+Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen. Zonder gedragswijziging opgedeeld en nagelopen:
+
+- **Opgedeeld:** `main.ts` (nu 664 regels: kaart, punten A en B, worker-verkeer, reisinfo) plus `state` (één toestand-object), `hash` (deellink), `controls` (instellingen, dag, vertrektijd), `playback`, `chart`, `legend`, `explain` (reisinfo als HTML, zonder DOM), `search`, `sheet`, `ui` en `format`. Modules krijgen hun koppelingen via `init(...)`, niet via elkaars globals.
+- **Foutjes:** zonder uurmodel antwoordde de worker niet op een diagramverzoek (het diagram bleef op "berekenen…" staan). Een foutmelding van de worker zegt nu bij welk verzoek hij hoort (`of`), zodat de kaart, het afspelen en het diagram doorlopen. De reisinfo met echte vertrektijden rekent op de dag van het getoonde resultaat.
+- **Worker:** `prepare()` voor `compute` en `profile`, `areasWithRoute()` voor trein- en IC-stations.
+- **`npm run check`** (`web/bench/check.ts`): de validatie (Utrecht C model A: 27 / 37 / 111 min; 28.960 haltes binnen 3 uur; CSA-route naar Groningen met kloktijden) plus de reisinfo-HTML. 17 controles, ±5 s.
+- **Getest** in headless Chrome (desktop en telefoon): status en voetregel, tooltip, reisinfo, zoeken "Ruinen", vergelijken (max, verschil, uit), tijdschuif, diagram 48/48, echte vertrektijden, afspelen, zondag, IC-kaart (95 stations), deellink met `p2`/`m=diff`, bottom sheet. Geen consolefouten.
+
+**Volgende stap:** blijft fase 4 stap 3 (testen op een telefoon). Bij nieuwe functies: pure tekst of rekenwerk in een eigen module zonder DOM, en een regel in `check.ts`.
+
+### Geheugen, deel 1: fietsraster zonder `nbr`/`lenM` (16 okt 2026)
+
+- **Vorm:** één byte per halve kant: richting (0–7 vooruit, 8–15 terug) en lengteniveau. De buur is `nodeOfCell[cel + step[richting]]`, de lengte komt uit `lenTab` (per rij, richting en niveau, 0,7 MB). Daarin staat dezelfde afronding als vroeger, met de rij van de kant "vooruit". De kanten staan in dezelfde volgorde.
+- **Geheugen:** fietsraster 81,7 → 30,7 MB. In Chrome houdt de worker bij de start 93 MB vast (was 144), de renderer is 208 MB (was 278).
+- **Uitkomst:** precies gelijk. `web/bench/bikegrid_check.ts` vergelijkt de rastertijden cel voor cel met een referentie van de oude code (`data/bikegrid_ref.bin`): 6 vertrekpunten × lopen/fiets bij aankomst, 0 cellen anders. In Chrome dezelfde haltetellingen (28.960, 26.355, 21.876, …). `npm run check` klopt.
+- **Rekentijd** (Node, route + raster, beste van 4 × 3, om en om): bij Utrecht C 174–198 → 209–220 ms lopend en 259–271 → 321–340 ms met fiets bij aankomst 15 km (+10–25%). Bij kleinere kaarten (Maastricht, Vlissingen, Aken) is het 0–10%. In Chrome is de eerste kaart 617–656 → 764–809 ms.
+- **Geprobeerd en niet gedaan:**
+  - Het knoopverschil als Int16 per kant (+21 MB) was nauwelijks sneller. De buur opzoeken in `nodeOfCell` is dus niet de vertraging.
+  - `time`/`bike`/`src` van de Dijkstra naast elkaar in één buffer won ook bijna niets.
+
+**Volgende stap:** geheugen deel 2: een kleiner raster per run, en minder runs bewaren.
+
+### Geheugen, deel 2: kleiner raster per run, minder runs (16 okt 2026)
+
+- **`Raster.via` als Uint16** (was Int32): 12,1 → 9,1 MB per raster. `VIA_DIRECT` = 65534 en `VIA_NONE` = 65535. De worker stopt met een fout als de graaf 65534 halteplekken of meer heeft.
+- **`results` bewaart 3 id's** (was 4): het getoonde beeld plus de twee frames vooruit (`AHEAD`). **`runCache` bewaart 2 runs** (was 4): bij slepen met B is A steeds de laatst gebruikte.
+- **Geheugen van de worker in Chrome** (na GC):
+
+  | Stap | Vooraf | Na deel 1 | Na deel 2 |
+  |---|---|---|---|
+  | Start | 144 MB | 93 MB | 90 MB |
+  | Echte vertrektijden (werkdag) | 210 MB | 159 MB | 150 MB |
+  | Vergelijken, 20 s afspelen | 403 MB | 365 MB | 270 MB |
+  | Gestopt | 330 MB | 279 MB | 235 MB |
+
+- **Getest:**
+  - `npm run check` slaagt, het fietsraster is cel voor cel gelijk, en Chrome toont dezelfde haltetellingen.
+  - De tooltip tijdens het afspelen met vergelijken toont steeds een route (40 keer gevraagd).
+  - Alleen B verplaatsen kost 129 ms netwerk, tegen 200 ms voor A en B samen: A komt uit de cache.
+
+**Volgende stap:** geheugen deel 3: alleen de dienstregeling van de gekozen dag bewaren.
+
+### Geheugen, deel 3: één dienstregeling tegelijk (16 okt 2026)
+
+- **Eén dag:** `timetables` in de worker houdt alleen de laatst gevraagde dag. Terug naar een andere dag laadt die opnieuw (Node: 150–250 ms, het bestand komt uit de HTTP-cache). Een run in `results` of `runCache` houdt zijn eigen dienstregeling nog vast tot hij wegvalt.
+- **`dur` (Uint16) in plaats van `arr` (Int32):** de aankomst is `dep + dur`. Dat past altijd, want de tijden in `conn_*.bin.gz` zijn al Uint16 vanaf de start van de rit. Een dienstregeling is nu 31 / 22 / 17 MB (was 35 / 25 / 19).
+- **Uitkomst gelijk:** 4 vertrekpunten × 4 vertrektijden × 3 dagen, met alle reistijden en een route met kloktijden. Alle 48 gevallen zijn gelijk aan de oude code. `npm run check` slaagt.
+- **Geheugen van de worker in Chrome** (na GC):
+
+  | Stap | Na deel 2 | Na deel 3 |
+  |---|---|---|
+  | Zondag bekeken (na werkdag en zaterdag) | 271 MB | 248 MB |
+  | Vergelijken (terug naar werkdag) | 313 MB | 279 MB |
+  | Afspelen | 270 MB | 260 MB |
+  | Gestopt | 235 MB | 186 MB |
+
+  Vergeleken met de eerste meting is de worker na gebruik 330 → 186 MB, en bij de start 144 → 90 MB.
+
+**Volgende stap:** geheugen deel 4, de Dijkstra van het fietsraster: `bike` en `src` als Uint16 (−2 MB per array per run, ±8 MB samen). Weinig winst. Daarna terug naar fase 4 stap 3 (testen op een telefoon).

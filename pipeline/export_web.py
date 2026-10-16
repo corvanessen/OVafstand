@@ -1,7 +1,8 @@
 """Fase 1: exporteer graph.npz naar een compact binair formaat voor de browser.
 
 Gebruik:  python pipeline/export_web.py [YYYYMMDD]
-Schrijft web/public/data/graph.bin en web/public/data/meta.json
+Schrijft naar web/public/data/: graph.bin, meta.json, hours.bin.gz en per dag conn_<datum>.bin.gz;
+met meer datums ook day_<datum>.bin.gz en hours_<datum>.bin.gz (zie onder).
 
 graph.bin is een aaneenschakeling van typed arrays (little endian), in deze volgorde,
 met byte-offsets in meta.json:
@@ -25,7 +26,17 @@ Meerdere dagen (fase 6.7 stap 4; graph.npz van build_graph.py met meerdere datum
 hours.bin.gz zijn de basisdag (werkdag). Voor elke andere dag (zaterdag, zondag) komen er
   day_<datum>.bin.gz    gzip van cost Uint16[nEdge] + kind Uint8[nEdge], in de volgorde van graph.bin
   hours_<datum>.bin.gz  het uurmodel van die dag, zoals hours.bin.gz
-meta.days noemt ze: [{key: "wd" | "za" | "zo", date, file (null voor de basisdag), hours}].
+meta.days noemt ze: [{key: "wd" | "za" | "zo", date, file (null voor de basisdag), hours, conn}].
+
+conn_<datum>.bin.gz (dienstregeling, fase 4; gzip), per dag alle ritten, voor CSA in de browser.
+Achter elkaar, met de aantallen in meta.days[k].conn = {file, nTrip, nStop}:
+  tripStart  Int32[nTrip]    aankomst op de eerste halte (s na middernacht, kan > 24:00 zijn)
+  tripLen    Uint16[nTrip]   aantal haltes van de rit
+  tripRoute  Uint16[nTrip]   index in meta.routes
+  stopArea   Uint16[nStop]   halteplek, per rit de haltes op volgorde
+  stopArr    Uint16[nStop]   aankomst in s na tripStart
+  stopDwell  Uint16[nStop]   vertrek − aankomst in s
+  stopFlags  Uint8[nStop]    1 = niet instappen, 2 = niet uitstappen
 """
 import gzip
 import json
@@ -55,6 +66,34 @@ def hours_bytes(line_wait, rows):
     hours = np.where(np.isfinite(wait_h), np.clip(np.round(wait_h), 0, 255), 255)
     hours[hours > 254] = 255
     return hours.astype(np.uint8)
+
+
+def conn_bytes(date, area_idx, route_index):
+    """de ritten van één dag als tabellen per rit en per halte (zie conn_<datum>.bin.gz hierboven)"""
+    dd = ROOT / "data" / f"day_{date}"
+    stops = pd.read_pickle(dd / "stops.pkl")
+    stops["area"] = stops.parent_station.fillna(stops.stop_id)
+    trips = pd.read_pickle(dd / "trips.pkl")
+    st = pd.read_pickle(dd / "stop_times.pkl").merge(stops[["stop_id", "area"]], on="stop_id")
+    st = st.sort_values(["trip_id", "stop_sequence"]).reset_index(drop=True)
+    area = area_idx.reindex(st.area).to_numpy()
+    assert not np.isnan(area).any(), "halteplek ontbreekt in de graaf"
+    first = st.groupby("trip_id", sort=False)
+    start = first.arr.transform("first").to_numpy()
+    trip_ids = first.size().index
+    n_stop = first.size().to_numpy()
+    route = trips.set_index("trip_id").route_id.reindex(trip_ids)
+    assert route.notna().all() and route.isin(route_index.index).all()
+    arr_off = st.arr.to_numpy() - start
+    dwell = st.dep.to_numpy() - st.arr.to_numpy()
+    assert arr_off.min() >= 0 and arr_off.max() < 65536 and dwell.min() >= 0 and dwell.max() < 65536
+    assert len(area_idx) < 65536 and n_stop.max() < 65536
+    flags = (st.pickup_type.to_numpy() == 1) * 1 + (st.drop_off_type.to_numpy() == 1) * 2
+    print(f"conn_{date}: {len(trip_ids):,} ritten, {len(st):,} haltes")
+    parts = [first.arr.first().to_numpy(np.int32), n_stop.astype(np.uint16),
+             route_index[route].to_numpy(np.uint16), area.astype(np.uint16), arr_off.astype(np.uint16),
+             dwell.astype(np.uint16), flags.astype(np.uint8)]
+    return b"".join(p.tobytes() for p in parts), len(trip_ids), len(st)
 
 
 def main():
@@ -128,6 +167,7 @@ def main():
 
     # uurmodel: wachttijd per instapkant per uur, in minuten; mtime=0, zodat dezelfde inhoud dezelfde bytes geeft
     board_rows = line_row[kind == KIND_BOARD]
+    area_idx = pd.Series(np.arange(n_area), index=g["area_id"])
     days = []
     for k, d in enumerate(dates):
         hours = hours_bytes(per_day[k][3], board_rows)
@@ -141,7 +181,12 @@ def main():
             (OUT / file).write_bytes(gzip.compress(c.tobytes() + kd.tobytes(), 9, mtime=0))
             print(f"{file}: {(OUT / file).stat().st_size / 1e6:.2f} MB, "
                   f"instapkanten open in het dagmodel {((kd == KIND_BOARD) & (c < 65535)).sum():,}")
-        days.append({"key": day_key(d), "date": d, "file": file, "hours": name})
+        conn, n_trip, n_stop = conn_bytes(d, area_idx, route_index)
+        conn_file = f"conn_{d}.bin.gz"
+        (OUT / conn_file).write_bytes(gzip.compress(conn, 9, mtime=0))
+        print(f"{conn_file}: {(OUT / conn_file).stat().st_size / 1e6:.2f} MB")
+        days.append({"key": day_key(d), "date": d, "file": file, "hours": name,
+                     "conn": {"file": conn_file, "nTrip": n_trip, "nStop": n_stop}})
         print(f"{name}: {hours.shape[0]:,} instapkanten × {hours.shape[1]} tijdvakken, {(OUT / name).stat().st_size / 1e6:.2f} MB")
 
     meta = {

@@ -10,18 +10,34 @@ pipeline/            Python: GTFS → graaf → binaire bestanden voor de browse
   stats.py           statistieken (aantallen, intervallen)
   build_graph.py     statische graaf (model A/A+) → data/day_<datum>/graph.npz
   heatmap.py         prototype: one-to-all + PNG-heatmap (matplotlib)
-  export_web.py      graph.npz → web/public/data/{graph.bin, meta.json}
+  export_web.py      graph.npz → web/public/data/{graph.bin, meta.json, hours*, day_*, conn_*}
+  export_connections.py, border_survey.py   metingen uit de verkenning van fase 4 en 5
   osrm_setup.sh      eigen OSRM-fietsserver in WSL (Ubuntu + Docker), localhost:5000; NL plus de strook BE/DE
   build_bike_grid.py fietsraster: wegafstanden per cel naar 16 buren, via OSRM
   export_bike_grid.py  fietsraster → web/public/data/bike.bin.gz
   bike_check.py, bike_grid_test.py, bike_ferry_check.py, grid_bench.mjs   metingen uit fase 3
 web/                 Vite + TypeScript + MapLibre
-  src/router.ts      graph.bin laden, Dijkstra, route-uitleg
+  bench/check.ts     vaste controle in Node: npm run check (validatie, reisinfo-HTML)
+  bench/             verder: metingen in Node (CSA, geheugen), bundelen met rolldown
+  -- rekenkern (in de worker) --
+  src/worker.ts      Web Worker: laadt de data, rekent kaarten, legt routes uit
+  src/router.ts      graph.bin en de dagen laden, Dijkstra, route-uitleg
+  src/csa.ts         dienstregeling (fase 4): conn_<datum>.bin.gz laden, CSA, route-uitleg
   src/bikegrid.ts    bike.bin.gz laden, Dijkstra over het fietsraster
   src/raster.ts      fietskegels (hemelsbreed) → raster van 250 m, kleuren
   src/grid.ts        Web Mercator-raster dat precies op de kaart past
-  src/worker.ts      Web Worker, houdt graaf en laatste resultaat vast
-  src/main.ts        kaart, zoekbalk (PDOK), instellingen, label en reisinfo
+  -- pagina --
+  src/main.ts        kaart, punten A en B, verkeer met de worker, label en reisinfo
+  src/state.ts       de toestand: params (instellingen), punten, soort kaart
+  src/hash.ts        deellink lezen en schrijven
+  src/controls.ts    instellingen, dag en vertrektijd in het paneel
+  src/playback.ts    de dag afspelen (frames vooruit)
+  src/chart.ts       diagram "Binnen 1 uur bereikbaar"
+  src/legend.ts      legenda
+  src/explain.ts     reisinfo als HTML (zonder DOM, getest in check.ts)
+  src/search.ts      zoekbalk (stations uit de graaf + PDOK, geocode.ts)
+  src/sheet.ts       bottom sheet op de telefoon, paneel inklappen op de desktop
+  src/ui.ts, format.ts   hulpjes: elementen, meldingen, tellen; tijden en tekst opmaken
 data/                (niet in versiebeheer) ruwe en tussentijdse data
 ```
 
@@ -61,7 +77,14 @@ De bron is de complete NL-dienstregeling in GTFS-formaat (NDOV Loket / OVapi, ±
 - **Stopgrens:** het zoeken stopt zodra de goedkoopste open knoop boven de maximale reistijd van de kleurschaal komt.
 - **Resultaat:** per halteplek de reistijd `T(s)`, plus de vorige knoop op de snelste route. Daarmee is later elke route terug te lezen.
 
-Waarom geen dienstregelingsalgoritme zoals CSA of RAPTOR? Een statische graaf geeft één tijdloos antwoord, is klein genoeg voor de browser en klopt goed met de NS-reistijden. Dienstregelingsmodus is gepland voor fase 4, zie het [plan](ONTWIKKELPLAN.md).
+Waarom standaard geen dienstregelingsalgoritme zoals CSA of RAPTOR? Een statische graaf geeft één tijdloos antwoord, is klein genoeg voor de browser en klopt goed met de NS-reistijden.
+
+**Echte vertrektijden** (fase 4, [csa.ts](web/src/csa.ts)): met een vertrektijd kies je tussen "Gemiddelde wachttijd" (het uurmodel) en "Echte vertrektijden". Bij de tweede rekent de worker met elke rit op zijn echte tijd. Dat gebeurt met het *Connection Scan Algorithm*, met 0 min overstap.
+- `conn_<datum>.bin.gz` bewaart per rit de halteplekken en de tijden (0,4–0,8 MB per dag). De browser laadt het pas als je die keuze maakt, en zet het met een counting sort om in ±2,1 mln connections, gesorteerd op vertrektijd.
+- De kaart toont per halteplek de mediaan van 12 scans: elke 5 min, van 15 min vóór tot 40 min na het gekozen half uur. Dat is hetzelfde venster als het uurmodel. Eén scan kost ±6–12 ms, de kaart samen ±100 ms.
+- De reisinfo rekent de scan van de mediaan voor die halteplek opnieuw uit en leest de route terug, met kloktijden ("middelste van 12 reizen: vertrek 08:40, aankomst 09:39").
+- Onder de schuif zegt een regel welk venster geldt.
+- Ritten na middernacht tellen ook vroeg in de nacht, als de nacht van dezelfde soort dag.
 
 ### 3. De laatste kilometer: fietsen over een raster
 
@@ -83,7 +106,7 @@ Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De
 
 - **Het zware werk is al gedaan.**
   - De dienstregeling (miljoenen stoptijden) is vooraf samengevat tot ±117.000 knopen en ±287.000 kanten.
-  - De browser rekent dus niet met vertrektijden, maar met een kleine graaf die één keer wordt geladen.
+  - De browser rekent dus niet met vertrektijden, maar met een kleine graaf die één keer wordt geladen. Alleen bij "Echte vertrektijden" komen de ritten zelf binnen (zie 2).
 - **Laden zonder parsen.**
   - `graph.bin` wordt in één keer als `ArrayBuffer` opgehaald.
   - De arrays (`Float32Array`, `Uint32Array`, …) zijn rechtstreekse vensters op die buffer. Er hoeft niets omgezet of gekopieerd te worden.
@@ -109,6 +132,7 @@ Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De
 - **De tooltip is bijna gratis.**
   - Bij hover zoekt de worker niet opnieuw. Hij kijkt welke halte de cel onder de muis leverde.
   - Daarna loopt hij de opgeslagen zoekboom terug naar het vertrekpunt.
+  - Bij "Echte vertrektijden" bewaart de worker geen zoekboom per scan. Hij rekent alleen de scan van de mediaan voor die halte opnieuw uit (±10 ms).
 
 ## Data verversen
 
@@ -121,7 +145,7 @@ python pipeline/build_graph.py 20261110 20261114 20261115
 python pipeline/export_web.py 20261110
 ```
 
-Kies een dinsdag of woensdag buiten de schoolvakanties, binnen de looptijd van de feed (zie `feed_info.txt`), en de zaterdag en zondag daarna. De eerste datum is de basis. `build_graph.py` maakt één graaf voor alle dagen: de halteplekken en lijnen van de werkdag eerst, die van het weekend erachter. `export_web.py` schrijft `graph.bin` en `hours.bin.gz` voor de werkdag, en per weekenddag `day_<datum>.bin.gz` (cost en kind per kant, ±0,2 MB) en `hours_<datum>.bin.gz`. Met één datum krijg je alleen de werkdag, zoals vroeger.
+Kies een dinsdag of woensdag buiten de schoolvakanties, binnen de looptijd van de feed (zie `feed_info.txt`), en de zaterdag en zondag daarna. De eerste datum is de basis. `build_graph.py` maakt één graaf voor alle dagen: de halteplekken en lijnen van de werkdag eerst, die van het weekend erachter. `export_web.py` schrijft `graph.bin` en `hours.bin.gz` voor de werkdag, en per weekenddag `day_<datum>.bin.gz` (cost en kind per kant, ±0,2 MB) en `hours_<datum>.bin.gz`. Voor elke dag komt er ook `conn_<datum>.bin.gz` (de dienstregeling per rit). Met één datum krijg je alleen de werkdag, zoals vroeger.
 
 Het fietsraster hangt ook af van de halteplekken. Na een nieuwe GTFS-dag dus ook:
 
@@ -155,6 +179,7 @@ Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.1
 | `t` | kleurschaal tot (min) | 180 |
 | `f` | fietsen over de weg (1) of hemelsbreed × 1,3 (0) | 1 |
 | `u` | vertrektijd in minuten na middernacht (uurmodel), stappen van 30 | geen: gemiddelde werkdag 07–19 u |
+| `r` | met `u`: echte vertrektijden (1) of gemiddelde wachttijd (0) | 0 |
 | `s` | fiets bij vertrek (1) of lopen (0) | 1 |
 | `a` | fiets bij aankomst (1) of lopen (0) | 0 |
 | `p2` | punt B bij vergelijken: `lat,lon,naam` (naam URL-gecodeerd) | geen: één vertrekpunt |
