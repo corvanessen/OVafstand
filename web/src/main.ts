@@ -249,7 +249,9 @@ map.on("load", () => {
 
 // ---------- heatmap: twee lagen die in elkaar overvloeien ----------
 const HEAT = ["heat0", "heat1"];
-const HEAT_OPACITY = 0.72;
+const HEAT_OPACITY = 0.8;
+// de legenda met dezelfde dekking, zodat de kleuren gelijk ogen aan die op de kaart
+document.documentElement.style.setProperty("--heat-opacity", String(HEAT_OPACITY));
 const FADE_MS = 400; // overgang tussen twee frames
 const FADE_STEP_MS = 50;
 let heatFront = 0;

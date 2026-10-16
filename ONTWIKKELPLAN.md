@@ -1210,3 +1210,13 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
   Vergeleken met de eerste meting is de worker na gebruik 330 → 186 MB, en bij de start 144 → 90 MB.
 
 **Volgende stap:** zie "Volgende concrete stap" bovenaan (de telefoontest is klaar). Geheugen deel 4 (`bike` en `src` als Uint16, ±8 MB) levert weinig op en is optioneel.
+
+### Toegankelijkheid, stap 1: kleurenschaal voor kleurenblinden (16 okt 2026, branch `startcellen`)
+
+- **Probleem.** De oude schaal (groen → geel → rood → paars, zoals RdYlGn) werd eerst lichter en daarna donkerder. Bij rood-groenblindheid (±8% van de mannen) vielen banden samen: in een simulatie (Machado, ΔE in CIELAB, 72% dekking over de basiskaart) lag 15–30 min (#a6d96a) bij 75–90 min (#fdae61) op ΔE 5 (deuteranopie), en 30–45 en 45–60 min op ΔE 1.
+- **Nieuwe schaal: viridis**, van geel (dichtbij) via groen en blauw naar paars. De helderheid loopt gelijkmatig af, dus de volgorde is ook zonder tint te lezen. Kleinste ΔE tussen twee banden die geen buren zijn: normaal 22, deuteranopie 11, protanopie 12, tritanopie 10 (oud: 23 / 5 / 3 / 20). Vergeleken met plasma, magma, inferno en YlGnBu: viridis scoort het best bij protanopie. Magma en YlGnBu beginnen te licht naast de lichtgrijze basiskaart.
+- **Dekking 0,72 → 0,8**, en de legenda heeft dezelfde dekking (`--heat-opacity`, gezet vanuit `HEAT_OPACITY` in `main.ts`), zodat de kleuren in de legenda gelijk ogen aan die op de kaart.
+- De stand "Verschil" (bruin en petrol, BrBG) was al veilig en blijft gelijk. Uitleg, `favicon.svg` en `og.png` zijn aangepast.
+- **Al in orde:** het contrast van de tekst haalt overal WCAG AA (grijs #667085: 5,0 op wit), zoomen werkt, en de minuten staan ook als tekst in het label en de reisinfo.
+
+**Volgende stap (toegankelijkheid):** de kleinste tekst (legenda en voetregel 11 px, as van het diagram 10 px) naar 12 px, de lettergroottes in `rem` zodat de lettergrootte van de browser meetelt, en `prefers-reduced-motion` voor de overgang en het laadteken.
