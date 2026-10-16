@@ -1097,3 +1097,51 @@ Het vinkje "Volgens de dienstregeling" bleek niet te begrijpen. Het klonk alsof 
 **Volgende stap (fase 4, stap 3):**
 1. Testen op een telefoon: het geheugen (±36 MB extra), de laadtijd en de twee knoppen in de bottom sheet.
 2. Later: een overstaptijd als instelling, en fietsen tussen haltes bij een overstap (ULTRA).
+
+### Geheugenmeting (15 okt 2026)
+
+Gemeten met `web/bench/mem_check.ts` (Node: bytes per array, zoals de worker laadt) en Chrome headless via CDP (productiebuild, na een GC in elke worker, vanaf Utrecht C).
+
+**In Chrome** (renderer = pagina + alle workers, privégeheugen):
+
+| Stap | Renderer | Onze worker | GPU-proces |
+|---|---|---|---|
+| Start (werkdag, gemiddelde wachttijd) | 278 MB | 144 MB | 180 MB |
+| + vertrektijd (uurmodel) | 265 MB | 176 MB | 222 MB |
+| + echte vertrektijden (werkdag) | 305 MB | 210 MB | 211 MB |
+| + zaterdag en zondag bekeken | 425 MB | 308 MB | 231 MB |
+| vergelijken met Amsterdam, 20 s afspelen | 464 MB | 403 MB | 246 MB |
+| gestopt | 410 MB | 330 MB | 207 MB |
+
+De JS-heap van de pagina is maar 7–9 MB. De rest buiten onze worker (±130 MB) is Chrome zelf, MapLibre en de tegels. Het GPU-proces (tegels, twee heatmaplagen van 6 MB) valt bij software-rendering ook in het werkgeheugen.
+
+**Wat de worker vasthoudt** (Node):
+
+| Onderdeel | Grootte | Wanneer |
+|---|---|---|
+| Fietsraster: `nbr` 41 MB, `lenM` 21 MB, `nodeOfCell` 6, `first`/`cellOfNode`/`snapM` 3,7 elk, startcellen 2,4 | **82 MB** | altijd |
+| Per kaart: raster (`time` + `via`, 6 + 6 MB) plus zoektocht 1–1,4 MB | **13,5 MB per run** | `runCache` (4) en `results` (4 id's × 1–2 runs): tot ±13 runs ≈ 175 MB bij afspelen met vergelijken |
+| Dienstregeling: werkdag 35, za 25, zo 19 MB (`dep`, `arr`, `trip` elk 4 B per connection) | **80 MB** | eenmaal geladen blijft elke dag staan |
+| Fiets-Dijkstra (`fromOrigin`, `fromStops`): `time`/`bike`/`src` 11,6 MB + wachtrij 8 MB elk | **39 MB** (47 met fiets bij aankomst 15 km: de wachtrij verdubbelt één keer) | na de eerste kaart |
+| Uurmodel 3,9 MB, cost/kind 0,9 MB per dag | 14 MB | per dag na een vertrektijd |
+| Graaf + `boardRow` | 7 MB | altijd |
+| `fillDist` | 6 MB | na de eerste kaart |
+
+**Kansen, op volgorde van winst:**
+1. **Fietsraster zonder `nbr`/`lenM`** (−50 MB, altijd). De buur volgt uit de richting (`cell + off[d]`, dan `nodeOfCell`). Eén byte per halve kant (richting + lengteniveau) is 11 MB in plaats van 62. Kost een extra opzoeking per kant in de Dijkstra: rekentijd meten.
+2. **Kleiner raster per run** (−6 MB per run). `via` als Uint16 (34.723 halteplekken plus twee speciale waarden), eventueel `time` als Uint16 in 0,1 min. Ook minder runs bewaren: `results` hoeft alleen het getoonde beeld plus de frames vooruit (3), en `runCache` deelt die runs.
+3. **Alleen de dienstregeling van de gekozen dag houden** (−20 tot −45 MB). Opnieuw laden komt uit de HTTP-cache. `arr` als Uint16-duur scheelt nog 2 B per connection.
+4. **Fiets-Dijkstra**: `bike` als Uint16 (meters, < 65 km) en `src` als Uint16 (−4 MB elk).
+5. Profielruns (diagram) maken elke keer een raster van 12 MB aan dat meteen weg kan: hergebruiken scheelt GC, niet de piek.
+
+### Opruimen van de code (15 okt 2026, branch `opruimen`)
+
+Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen. Zonder gedragswijziging opgedeeld en nagelopen:
+
+- **Opgedeeld:** `main.ts` (nu 664 regels: kaart, punten A en B, worker-verkeer, reisinfo) plus `state` (één toestand-object), `hash` (deellink), `controls` (instellingen, dag, vertrektijd), `playback`, `chart`, `legend`, `explain` (reisinfo als HTML, zonder DOM), `search`, `sheet`, `ui` en `format`. Modules krijgen hun koppelingen via `init(...)`, niet via elkaars globals.
+- **Foutjes:** zonder uurmodel antwoordde de worker niet op een diagramverzoek (het diagram bleef op "berekenen…" staan). Een foutmelding van de worker zegt nu bij welk verzoek hij hoort (`of`), zodat de kaart, het afspelen en het diagram doorlopen. De reisinfo met echte vertrektijden rekent op de dag van het getoonde resultaat.
+- **Worker:** `prepare()` voor `compute` en `profile`, `areasWithRoute()` voor trein- en IC-stations.
+- **`npm run check`** (`web/bench/check.ts`): de validatie (Utrecht C model A: 27 / 37 / 111 min; 28.960 haltes binnen 3 uur; CSA-route naar Groningen met kloktijden) plus de reisinfo-HTML. 17 controles, ±5 s.
+- **Getest** in headless Chrome (desktop en telefoon): status en voetregel, tooltip, reisinfo, zoeken "Ruinen", vergelijken (max, verschil, uit), tijdschuif, diagram 48/48, echte vertrektijden, afspelen, zondag, IC-kaart (95 stations), deellink met `p2`/`m=diff`, bottom sheet. Geen consolefouten.
+
+**Volgende stap:** blijft fase 4 stap 3 (testen op een telefoon). Bij nieuwe functies: pure tekst of rekenwerk in een eigen module zonder DOM, en een regel in `check.ts`.
