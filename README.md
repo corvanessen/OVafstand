@@ -18,7 +18,7 @@ pipeline/            Python: GTFS → graaf → binaire bestanden voor de browse
   bike_check.py, bike_grid_test.py, bike_ferry_check.py, grid_bench.mjs   metingen uit fase 3
 web/                 Vite + TypeScript + MapLibre
   bench/check.ts     vaste controle in Node: npm run check (validatie, reisinfo-HTML)
-  bench/             verder: metingen in Node (CSA, geheugen), bundelen met rolldown
+  bench/             verder: metingen in Node (CSA, geheugen, fietsraster), bundelen met rolldown
   -- rekenkern (in de worker) --
   src/worker.ts      Web Worker: laadt de data, rekent kaarten, legt routes uit
   src/router.ts      graph.bin en de dagen laden, Dijkstra, route-uitleg
@@ -50,7 +50,7 @@ De bron is de complete NL-dienstregeling in GTFS-formaat (NDOV Loket / OVapi, ±
 - **`extract_day.py`** houdt één representatieve werkdag over: alleen de ritten die op die datum rijden, met tijden omgerekend naar seconden.
 - **`build_graph.py`** maakt van die dag een *statische* graaf. De vertrektijden verdwijnen, en elke lijn krijgt een rijtijd en een interval:
   - **Halteplekken:** perrons en haltes van hetzelfde station tellen als één plek (`parent_station`). Dat zijn er ±34.000.
-  - **Lijnknopen:** één per route plus richting op elke halteplek. Dat zijn er ±82.500.
+  - **Lijnknopen:** één per route plus richting op elke halteplek. Dat zijn er ±90.700, inclusief de lijnen die alleen 's nachts of in het weekend rijden.
   - **Kanten:**
 
     | Kant | Van → naar | Kosten |
@@ -61,7 +61,7 @@ De bron is de complete NL-dienstregeling in GTFS-formaat (NDOV Loket / OVapi, ±
     | Lopen | halteplek → halteplek binnen 300 m | looptijd |
 
   - **Interval:** het gecombineerde interval van *alle* voertuigen die naar dezelfde volgende halte rijden. Wie in Utrecht op Amsterdam wacht, neemt de eerste trein die gaat, van welke serie ook.
-- **`export_web.py`** zet de graaf om naar [`graph.bin`](web/public/data/graph.bin) (2,9 MB) en `meta.json` (namen en routes, 1 MB):
+- **`export_web.py`** zet de graaf om naar [`graph.bin`](web/public/data/graph.bin) (3,1 MB) en `meta.json` (namen en routes, 1 MB):
   - `graph.bin` bestaat uit getypeerde arrays achter elkaar.
   - De kanten staan in CSR-vorm: per knoop een offset in één lange kantenlijst.
   - Kosten zijn hele seconden in `uint16`.
@@ -76,6 +76,8 @@ De bron is de complete NL-dienstregeling in GTFS-formaat (NDOV Loket / OVapi, ±
   - De factor wordt pas in de browser toegepast, dus wisselen van model kost geen nieuwe data.
 - **Stopgrens:** het zoeken stopt zodra de goedkoopste open knoop boven de maximale reistijd van de kleurschaal komt.
 - **Resultaat:** per halteplek de reistijd `T(s)`, plus de vorige knoop op de snelste route. Daarmee is later elke route terug te lezen.
+
+**Vertrektijd en dag** (het uurmodel): met een vertrektijd telt niet de wachtfactor, maar de gemiddelde wachttijd per half uur uit `hours.bin.gz`. Die is gemiddeld over een uur rond dat half uur, uit alle vertrekken van die dag in de corridor. De wachttijd hangt af van de kloktijd bij aankomst op de halte (vertrektijd + reistijd tot dan). Lijnen die alleen 's nachts rijden, tellen alleen mee in het uurmodel. Zaterdag en zondag hebben eigen kosten per kant (`day_<datum>.bin.gz`) en een eigen uurmodel. De worker laadt die pas als je die dag kiest.
 
 Waarom standaard geen dienstregelingsalgoritme zoals CSA of RAPTOR? Een statische graaf geeft één tijdloos antwoord, is klein genoeg voor de browser en klopt goed met de NS-reistijden.
 
@@ -105,7 +107,7 @@ Waarom standaard geen dienstregelingsalgoritme zoals CSA of RAPTOR? Een statisch
 Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De statusregel meet het: "netwerk ~50–100 ms · kaart ~250–400 ms". Het fietsraster laadt na de graaf (±0,5 s); tot dan rekent de kaart met kegels. Daar zijn deze redenen voor:
 
 - **Het zware werk is al gedaan.**
-  - De dienstregeling (miljoenen stoptijden) is vooraf samengevat tot ±117.000 knopen en ±287.000 kanten.
+  - De dienstregeling (miljoenen stoptijden) is vooraf samengevat tot ±125.000 knopen en ±310.000 kanten.
   - De browser rekent dus niet met vertrektijden, maar met een kleine graaf die één keer wordt geladen. Alleen bij "Echte vertrektijden" komen de ritten zelf binnen (zie 2).
 - **Laden zonder parsen.**
   - `graph.bin` wordt in één keer als `ArrayBuffer` opgehaald.
