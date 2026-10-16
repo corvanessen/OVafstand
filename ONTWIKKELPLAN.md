@@ -252,10 +252,10 @@ Fase 3, realistisch fietsen:
 - ~~Fase 4, stap 1: CSA in de worker als derde stand.~~ Klaar, zie "Resultaten fase 4, stap 1".
 - ~~Fase 4, stap 2: de keuze duidelijk maken.~~ Klaar, zie "Resultaten fase 4, stap 2".
 - ~~De code opruimen: `main.ts` in modules, `npm run check`.~~ Klaar, zie "Opruimen van de code".
+- ~~Mergen naar `main`.~~ Klaar: PR #8 (16 okt 2026) bracht de verkenning, fase 4, het opruimen en het geheugen naar `main`, dus ook naar Pages.
 - ~~Het geheugen meten en omlaag brengen.~~ Klaar, zie "Geheugenmeting" en "Geheugen, deel 1–3": de worker houdt bij de start 90 MB vast (was 144) en na gebruik 186 MB (was 330).
 - **Nu:**
   - fase 4, stap 3: testen op een echte telefoon (zie daar);
-  - mergen naar `main`: Pages publiceert vanaf `main`, en daar staat fase 6 tot en met 6.7 (PR #7). De verkenning van fase 4/5, fase 4, het opruimen en het geheugen staan nog op `opruimen` (14 commits);
   - bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
 - **Daarna, nog open:**
   - `og.png` opnieuw (de standaardkaart is veranderd sinds 6.7 stap 2);
@@ -1208,4 +1208,4 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
 
   Vergeleken met de eerste meting is de worker na gebruik 330 → 186 MB, en bij de start 144 → 90 MB.
 
-**Volgende stap:** fase 4 stap 3 (testen op een telefoon) en mergen naar `main`; zie "Volgende concrete stap" bovenaan. Geheugen deel 4 (`bike` en `src` als Uint16, ±8 MB) levert weinig op en is optioneel.
+**Volgende stap:** fase 4 stap 3 (testen op een telefoon); zie "Volgende concrete stap" bovenaan. Geheugen deel 4 (`bike` en `src` als Uint16, ±8 MB) levert weinig op en is optioneel.
