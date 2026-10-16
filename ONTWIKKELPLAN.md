@@ -158,13 +158,13 @@ OSM  ─┴─> fietsrouting ─> fietstabellen per tegel ──>    bike/{z}/{x
 
 | Fase | Inhoud | Resultaat |
 |---|---|---|
-| **0. Verkenning** (1–2 avonden) | GTFS downloaden, statistieken, haltes clusteren, lijnpatronen en headways bepalen. Een Jupyter-notebook met een eerste Dijkstra vanaf Utrecht Centraal. | Gecontroleerde aantallen en een eerste kaartje (matplotlib) |
-| **1. Kernmotor** | Graaf voor A+ bouwen, exporteren als binair bestand. Dijkstra in TS, plus een test tegen bekende reizen (vergelijken met 9292 / NS-planner). | `graph.bin` en een routing-module met tests |
-| **2. MVP-website** | Kaart, klikken voor het startpunt, PDOK-zoekbalk, heatmap met hemelsbrede fietsafstand (kegeltruc), legenda, tooltip met de reistijd en de route ("fiets 6 min → IC 34 min → fiets 4 min") | Werkende site voor heel NL |
-| **3. Realistisch fietsen** | Fietstabellen via OSRM, tegels opslaan, water en veerboten goed meenemen | Correcte randen bij water, nauwkeurig dichtbij |
-| **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". Stap 1 en 2 zijn klaar: "Echte vertrektijden" met de mediaan over 12 vertrekken. | Tweede modus |
+| **0. Verkenning** (1–2 avonden) | GTFS downloaden, statistieken, haltes clusteren, lijnpatronen en headways bepalen. Een Jupyter-notebook met een eerste Dijkstra vanaf Utrecht Centraal. Klaar. | Gecontroleerde aantallen en een eerste kaartje (matplotlib) |
+| **1. Kernmotor** | Graaf voor A+ bouwen, exporteren als binair bestand. Dijkstra in TS, plus een test tegen bekende reizen (vergelijken met 9292 / NS-planner). Klaar. | `graph.bin` en een routing-module met tests |
+| **2. MVP-website** | Kaart, klikken voor het startpunt, PDOK-zoekbalk, heatmap met hemelsbrede fietsafstand (kegeltruc), legenda, tooltip met de reistijd en de route ("fiets 6 min → IC 34 min → fiets 4 min"). Klaar. | Werkende site voor heel NL |
+| **3. Realistisch fietsen** | Fietstabellen via OSRM, tegels opslaan, water en veerboten goed meenemen. Klaar, als één fietsraster in plaats van tegels (zie de resultaten van fase 3). | Correcte randen bij water, nauwkeurig dichtbij |
+| **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". Stap 1 en 2 zijn klaar: "Echte vertrektijden" met de mediaan over 12 vertrekken. Stap 3 (testen op een telefoon) is klaar. Open: CSA per frame bij afspelen, overstaptijd, ULTRA. | Tweede modus |
 | **5. Grensregio** | België en een uitsnede van Duitsland samenvoegen in de GTFS (stop-ID's laten matchen bij grensstations). Verkend, zie "Verkenning fase 4 en 5". | Kaart tot ongeveer 50 km over de grens |
-| **6. Gebruikers en bereik** | Bezoekers meten, deellink met instellingen, Open Graph, uitleg, mijn locatie, bottom sheet op mobiel, dag-animatie (uurmodel), twee vertrekpunten vergelijken. Later: overstapstraf, alleen trein. Zie "Fase 6 in detail". | Begrijpelijk en deelbaar voor bezoekers zonder voorkennis |
+| **6. Gebruikers en bereik** | Bezoekers meten, deellink met instellingen, Open Graph, uitleg, mijn locatie, bottom sheet op mobiel, dag-animatie (uurmodel), twee vertrekpunten vergelijken. Klaar, ook getest op een echt toestel. Later: overstapstraf, alleen trein. Zie "Fase 6 in detail". | Begrijpelijk en deelbaar voor bezoekers zonder voorkennis |
 
 ### Risico's
 
@@ -251,7 +251,22 @@ Fase 3, realistisch fietsen:
 - ~~Fase 4 en 5 verkennen: grootte, rekentijd, feeds.~~ Klaar, zie "Verkenning fase 4 en 5".
 - ~~Fase 4, stap 1: CSA in de worker als derde stand.~~ Klaar, zie "Resultaten fase 4, stap 1".
 - ~~Fase 4, stap 2: de keuze duidelijk maken.~~ Klaar, zie "Resultaten fase 4, stap 2".
-- **Nu:** fase 4, stap 3 (zie daar). Daarnaast bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
+- ~~De code opruimen: `main.ts` in modules, `npm run check`.~~ Klaar, zie "Opruimen van de code".
+- ~~Mergen naar `main`.~~ Klaar: PR #8 (16 okt 2026) bracht de verkenning, fase 4, het opruimen en het geheugen naar `main`, dus ook naar Pages.
+- ~~Het geheugen meten en omlaag brengen.~~ Klaar, zie "Geheugenmeting" en "Geheugen, deel 1–3": de worker houdt bij de start 90 MB vast (was 144) en na gebruik 186 MB (was 330).
+- **Nu:**
+  - ~~fase 4, stap 3: testen op een echte telefoon.~~ Klaar (16 okt 2026): het werkt (gebruiker);
+  - bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
+- **Daarna, nog open:**
+  - ~~`og.png` opnieuw (de standaardkaart is veranderd sinds 6.7 stap 2).~~ Klaar (16 okt 2026), nu met een script: `web/scripts/og.mjs` (zie README);
+  - de legenda onderaan de sheet zweeft op de telefoon boven de navigatiebalk onderin (gemeld door de gebruiker na de test op een echt toestel, 16 okt 2026);
+  - de startcellen opnieuw met OSRM voor de 459 weekendhaltes;
+  - fase 5, de strook van 20 km (NMBS, TEC, Duitsland);
+  - fase 4 later: een overstaptijd als instelling, fietsen tussen haltes bij een overstap (ULTRA), CSA per frame bij afspelen;
+  - 6.7 stap 3, de andere smaken: reistijd naar een voorziening, inwoners binnen 45 min;
+  - fase 6 later: een overstapstraf, "alleen trein";
+  - kleine geheugenwinst: `bike`/`src` als Uint16 (±8 MB), het raster van de diagramruns hergebruiken;
+  - open vragen: een eigen domeinnaam, een demo vanaf Utrecht op de voorpagina, een video met `MediaRecorder`.
 
 ### Resultaten fase 3, stap 1: hoe goed klopt hemelsbreed × 1,3? (13 okt 2026)
 
@@ -344,7 +359,7 @@ Fout = raster − OSRM, zonder correctiefactor:
 
 **Conclusies:**
 - **16 richtingen is de beste keuze.** Zonder correctiefactor wijkt het raster in Zeeland bij 2,3% meer dan 5 min af, tegen 11,1% voor het model. 16L wint daar weinig op, voor 50% meer data.
-- **Utrecht blijft lastiger.** Het raster wijkt daar bij 8,6% meer dan 5 min af (p98 +9,6 min). Het raster is dan te lang, waarschijnlijk door cellen die op een weg aan de andere kant van een barrière snappen, zoals een spoor of gracht. Dit is nog niet onderzocht.
+- **Utrecht blijft lastiger.** Het raster wijkt daar bij 8,6% meer dan 5 min af (p98 +9,6 min). Het raster is dan te lang, waarschijnlijk door cellen die op een weg aan de andere kant van een barrière snappen, zoals een spoor of gracht. Dit is nog niet onderzocht. (Later: opgelost in stap 5 met de startcellen.)
 - **De grootte valt tegen.** Met 16 richtingen is het ±5–8 MB zlib voor heel NL. De doelstelling is een paar MB. Mogelijke winst: 4 bits per kant, kanten weglaten die even lang zijn als de route via twee kortere kanten, of tegels per regio die pas laden als ze nodig zijn.
 - **De rekentijd is ±0,5 s voor heel NL**, tegen 90–270 ms nu. Dat is acceptabel voor een klik, maar niet tijdens slepen. Een mogelijke oplossing: tijdens het slepen de snelle kegels tonen, en na het loslaten het fietsraster.
 
@@ -387,7 +402,7 @@ Het raster is nu in de mediaan 4–7% te lang, zonder correctiefactor. De NL-gro
 
 - **`web/src/bikegrid.ts`:**
   - **Laden.** Laadt `bike.bin.gz` en pakt het zelf uit met `DecompressionStream` als de server geen `Content-Encoding` zet.
-  - **Opbouw bij het laden.** De kanten komen in CSR-vorm, beide richtingen, met de lengte in echte meters (`Uint16`). De startcellen per halteplek worden omgezet naar knopen. Het laden kost ±0,4–0,7 s, na de graaf. Tot dan rekent de kaart met kegels.
+  - **Opbouw bij het laden.** De kanten komen in CSR-vorm, beide richtingen, met de lengte in echte meters (`Uint16`). (Sinds geheugen deel 1: één byte per kant, zie daar.) De startcellen per halteplek worden omgezet naar knopen. Het laden kost ±0,4–0,7 s, na de graaf. Tot dan rekent de kaart met kegels.
   - **Stap 1, vanaf het vertrekpunt.** Dijkstra met een bucketwachtrij (10 s) over het raster, met de fietsgrens vanaf het vertrekpunt. Het vertrekpunt start in de 5 × 5 cellen eromheen, hemelsbreed × 1,3 naar het celmidden. Daaruit volgen de begintijden van de haltes, via hun startcellen. De OV-zoektocht (`search`) krijgt die begintijden nu van buiten.
   - **Stap 2, vanaf de haltes.** Dijkstra vanaf alle bereikte haltes tegelijk, met de fietsgrens vanaf de halte. Elke cel krijgt de snelste van beide tijden, plus de snapafstand.
   - **Terugval.** Haltes zonder startcellen (België) tekenen nog een hemelsbrede kegel. Dat geldt ook voor het vertrekpunt buiten het raster.
@@ -408,9 +423,9 @@ Het raster is nu in de mediaan 4–7% te lang, zonder correctiefactor. De NL-gro
 - **Visueel bij Goes:** de kegels lopen over de Oosterschelde en de Westerschelde door; het raster volgt het wegennet.
 
 **Bekende beperkingen:**
-- **Over de grens.** Cellen over de grens zijn alleen gekleurd vanuit Belgische haltes (kegels). Vanaf Nederlandse haltes stopt het fietsen aan de grens, tot het grensextract er is.
+- **Over de grens.** Cellen over de grens zijn alleen gekleurd vanuit Belgische haltes (kegels). Vanaf Nederlandse haltes stopt het fietsen aan de grens, tot het grensextract er is. (Opgelost in stap 8.)
 - **Fietsgrens.** De fietsgrens geldt per label: de eerste halte die een cel bereikt, bepaalt de gefietste afstand. Dat is een benadering.
-- **Veerponten.** Kleine veerponten zonder GTFS-dienst ontbreken waarschijnlijk in het fietsraster. Dat is nog niet gecontroleerd.
+- **Veerponten.** Kleine veerponten zonder GTFS-dienst ontbreken waarschijnlijk in het fietsraster. Dat is nog niet gecontroleerd. (Gecontroleerd in stap 8: 525 van de 578 doen mee.)
 
 **Volgende stap:**
 1. ~~Het fietsraster voor heel NL bouwen en de echte grootte meten.~~ Klaar (stap 6): 2,25 MB gzip.
@@ -529,7 +544,7 @@ Begin met een uurmodel: per uur een statische graaf. Nog geen volledige dienstre
   - onder de schuif een lijndiagram met het oppervlak dat per uur binnen 1 uur bereikbaar is.
 - **Later.** Fase 4 (CSA) kan dezelfde schuif gebruiken. Neem dan per frame de mediaan over 12 vertrekmomenten, zodat het beeld niet springt.
 - **Open punten:**
-  - alleen werkdag, of ook zaterdag en zondag?
+  - ~~alleen werkdag, of ook zaterdag en zondag?~~ Ook het weekend (6.7 stap 4);
   - een demo vanaf Utrecht op de voorpagina?
   - een video exporteren met `MediaRecorder`?
 
@@ -604,7 +619,7 @@ Begonnen met 6.1 in plaats van 6.2 (keuze van de gebruiker). Op branch `fase6`.
   - `vertrekpunt-klik`, `-tik`, `-slepen`, `-zoeken`, `-voorbeeld` en `-locatie`. Het plan noemde één gebeurtenis `vertrekpunt-gekozen`, maar per bron leert meer.
   - `gedeeld-menu` (`navigator.share`) en `gedeeld-kopie` (klembord).
   - `uitleg-geopend` en `instellingen-geopend`.
-  - Later: `animatie-gestart` en `vergelijken-gestart`.
+  - Later: `animatie-gestart` en `vergelijken-gestart`. (Allebei gedaan, in 6.4 deel 1 en 6.5.)
 - **In "Hoe werkt dit?"** staat: "Bezoeken worden geteld met GoatCounter, zonder cookies en zonder je locatie."
 - **Getest in headless Chrome.** Met een recorder in plaats van `goatcounter.count` komen chip, uitleg, instellingen, delen, locatie en klik in de juiste volgorde binnen, zonder cijfers.
 - **Nulmeting.** Er wordt pas geteld na een merge naar `main`, omdat Pages vanaf `main` publiceert.
@@ -698,7 +713,7 @@ Getest in de emulatie: korte veeg, langzaam slepen omhoog en omlaag, en tikken o
 - **Rijtijden.** Die zijn nog de kortste uit 07–19 u.
 - **Ontbrekende lijnen.** Lijnen die alleen buiten 07–19 u rijden ontbreken, zoals nachtbussen en de nachttreinen als die een eigen route-id hebben. Daardoor is de nacht te somber.
 - **Tijdsprongen.** Een wachttijd uit het ene uur kan voorbij het volgende vertrek reiken, dus de FIFO-eigenschap geldt maar bij benadering.
-- **Uit plan 6.4 nog niet gedaan:**
+- **Uit plan 6.4 nog niet gedaan:** (alles later gedaan: 48 halve uren en nachtlijnen in "nachtlijnen en halve uren", de rest in 6.4 deel 2, het weekend in 6.7 stap 4)
   - twee frames vooruit rekenen;
   - de overgang met twee `ImageSource`-lagen;
   - het lijndiagram met het oppervlak binnen 1 uur;
@@ -738,7 +753,7 @@ Rond 4 uur zit er een gat tussen het nachtnet en de eerste treinen. Wie om 4:00 
 
 **Blijft open:**
 - de rijtijden per tijdvak;
-- het weekend;
+- ~~het weekend;~~ gedaan in 6.7 stap 4;
 - de FIFO-eigenschap geldt alleen bij benadering.
 
 ### Resultaten fase 6.4, deel 2: vloeiend afspelen en diagram (15 okt 2026)
@@ -755,7 +770,7 @@ Ook op branch `fase6-nacht`.
     - de oude volgt `1 − 0,28 / (1 − dekking nieuw)`, zodat de basiskaart steeds voor precies 28% doorschijnt;
     - `crossfade()` stuurt de dekking zelf, in stappen van 50 ms; de ingebouwde overgang staat uit (standaard 300 ms).
     - Per beeldje bijwerken maakte het afspelen in headless Chrome onregelmatig (0,7–1,25 s per stap), want elke stap is een volledige repaint. Met stappen van 50 ms is het weer 700–715 ms.
-- **Tooltip.** De worker bewaart de laatste vier resultaten per id. De tooltip vraagt het getoonde resultaat op (`resultId`), niet het laatst berekende. Na elk nieuw beeld wordt hij opnieuw berekend.
+- **Tooltip.** De worker bewaart de laatste vier resultaten per id (sinds geheugen deel 2: drie). De tooltip vraagt het getoonde resultaat op (`resultId`), niet het laatst berekende. Na elk nieuw beeld wordt hij opnieuw berekend.
 - **Diagram** "Binnen 1 uur bereikbaar":
   - het oppervlak in km² (cellen van ±250 m) per half uur, onder de schuif, met een lijn voor de huidige tijd;
   - klikken of slepen kiest de tijd;
@@ -791,7 +806,7 @@ Op branch `fase6-vergelijk`, vanaf `fase6-nacht`.
   - Een korte uitleg onder de rijen: "de kleur is de langste van de twee reistijden".
 - **Kaart.** Per cel de langste van de twee reistijden, met dezelfde kleurschaal. De statusregel telt de haltes "voor allebei binnen 3 uur".
 - **Tooltip en reisinfo.** Bovenaan de langste reistijd ("voor jullie allebei"), daaronder de route van A en die van B, elk met een letter. Op de telefoon heet de knop "Punt B hierheen".
-- **Rekenen.** De worker rekent A en B apart en bewaart de laatste vier runs (`cachedRun`, op vertrekpunt plus instellingen). Bij een nieuwe B rekent hij alleen B: gemeten netwerk ±100 ms, kaart ±400 ms, net als met één punt. Als beide punten nieuw zijn (een gedeelde link), kost het ±900 ms.
+- **Rekenen.** De worker rekent A en B apart en bewaart de laatste vier runs (`cachedRun`, op vertrekpunt plus instellingen; sinds geheugen deel 2: twee). Bij een nieuwe B rekent hij alleen B: gemeten netwerk ±100 ms, kaart ±400 ms, net als met één punt. Als beide punten nieuw zijn (een gedeelde link), kost het ±900 ms.
 - **Met de tijdschuif.** Afspelen en het diagram werken ook met twee punten. Het diagram heet dan "Voor allebei binnen 1 uur" en rekent twee keer zo lang.
 - **Deellink** `&p2=lat,lon,naam`. De kaart opent met beide punten in beeld.
 - **Getest** in headless Chrome:
@@ -869,7 +884,7 @@ Op branch `fase6-vergelijk`.
 | lopen aan beide kanten | 28.736 | 55 min |
 
   Het aantal haltes hangt alleen af van het eerste stuk. De kaart wordt met lopen bij aankomst duidelijk vlekkeriger buiten de steden. Ook hemelsbreed (`f=0`), een ongeldige `s=2` en `hashchange` zijn getest. Er waren geen consolefouten.
-- **Nog doen:** `og.png` opnieuw maken, want de standaardkaart is veranderd.
+- **Nog doen:** `og.png` opnieuw maken, want de standaardkaart is veranderd. (Gedaan op 16 okt 2026 met `web/scripts/og.mjs`.)
 
 ### Resultaten fase 6.7, stap 3: naar het dichtstbijzijnde IC-station (15 okt 2026)
 
@@ -974,7 +989,7 @@ CSA is dus 3–5 × sneller dan de huidige Dijkstra. Ook de mediaan over 12 vert
 - **De mediaan van CSA ligt dicht bij A+ en het uurmodel** (hooguit ±5–8 min), maar per vertrekmoment springt CSA 5–15 min.
 - **Op het platteland** (Ruinen) springt de CSA sterk per vertrekmoment (13.185 tegen 14.506 haltes binnen 3 uur, met 7 min verschil). De mediaan per frame is dus nodig, zoals het plan al zei.
 
-**Nog niet gemeten:** ritten van de vorige dag na middernacht, een overstaptijd en fietsen tussen haltes (ULTRA).
+**Nog niet gemeten:** ritten van de vorige dag na middernacht, een overstaptijd en fietsen tussen haltes (ULTRA). (De nacht is in fase 4 stap 1 opgelost met kopieën vóór 00:00.)
 
 ### Fase 5: grensregio
 
@@ -1051,7 +1066,7 @@ Op branch `fase4` (vanaf `verkenning-4-5`).
 **Browser** (`csa.ts`):
 - **Laden.** `loadTimetable` laadt de dag pas als het vinkje aan staat, en sorteert met een counting sort per vertrekseconde.
   - Werkdag: 2.138.690 connections. Dat is inclusief kopieën vóór 00:00 van de ritten na 24:00, als de nacht van dezelfde soort dag.
-  - In Node kost het laden 410 ms (zondag 230 ms). In het geheugen is het ±36 MB.
+  - In Node kost het laden 410 ms (zondag 230 ms). In het geheugen is het ±36 MB (sinds geheugen deel 3: 31 MB, en één dag tegelijk).
 - **Rekenen.** `csaSearch` doet 12 scans, elke 5 min van −15 tot +40 min rond het gekozen half uur. Dat is hetzelfde venster als het uurmodel.
   - Per halteplek telt de onderste mediaan (de 6e van 12), en de scan die die gaf.
   - Lopen gaat over de loopkanten van de graaf, ook in meer stappen; 0 min overstap.
@@ -1095,7 +1110,7 @@ Het vinkje "Volgens de dienstregeling" bleek niet te begrijpen. Het klonk alsof 
 **Ook gemeten** (`web/bench/coverage.ts`, vanaf Utrecht C, km² binnen 3 uur): de gemiddelde dag 35.142 km² met de fiets bij aankomst, 22.068 lopend. Het uurmodel geeft 34.637 en 21.360, echte vertrektijden 32.392 en 19.556. Dat de kaart kleiner oogt dan vroeger, komt vooral door "Fiets bij aankomst" (standaard uit sinds 6.7 stap 2, −37%). Echte vertrektijden halen er nog 6–8% af.
 
 **Volgende stap (fase 4, stap 3):**
-1. Testen op een telefoon: het geheugen (±36 MB extra), de laadtijd en de twee knoppen in de bottom sheet.
+1. ~~Testen op een telefoon: het geheugen (±31 MB extra), de laadtijd en de twee knoppen in de bottom sheet.~~ Klaar (16 okt 2026): het werkt. Wel zweeft de legenda boven de navigatiebalk onderin (zie "Volgende concrete stap").
 2. Later: een overstaptijd als instelling, en fietsen tussen haltes bij een overstap (ULTRA).
 
 ### Geheugenmeting (15 okt 2026)
@@ -1194,4 +1209,4 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
 
   Vergeleken met de eerste meting is de worker na gebruik 330 → 186 MB, en bij de start 144 → 90 MB.
 
-**Volgende stap:** geheugen deel 4, de Dijkstra van het fietsraster: `bike` en `src` als Uint16 (−2 MB per array per run, ±8 MB samen). Weinig winst. Daarna terug naar fase 4 stap 3 (testen op een telefoon).
+**Volgende stap:** zie "Volgende concrete stap" bovenaan (de telefoontest is klaar). Geheugen deel 4 (`bike` en `src` als Uint16, ±8 MB) levert weinig op en is optioneel.
