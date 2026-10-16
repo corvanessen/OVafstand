@@ -11,7 +11,7 @@ export const DAY_S = 86400;
 export interface Timetable {
   n: number; // aantal connections
   dep: Int32Array; // s na middernacht, oplopend
-  arr: Int32Array;
+  dur: Uint16Array; // aankomst = dep + dur; past altijd, want de tijden in het bestand zijn Uint16 vanaf de start van de rit
   from: Uint16Array; // halteplek
   to: Uint16Array;
   trip: Int32Array;
@@ -60,7 +60,7 @@ export async function loadTimetable(base: string, info: ConnInfo): Promise<Timet
   const tt: Timetable = {
     n,
     dep: new Int32Array(n),
-    arr: new Int32Array(n),
+    dur: new Uint16Array(n),
     from: new Uint16Array(n),
     to: new Uint16Array(n),
     trip: new Int32Array(n),
@@ -70,7 +70,7 @@ export async function loadTimetable(base: string, info: ConnInfo): Promise<Timet
   each((t, i, dep) => {
     const c = count[dep]++;
     tt.dep[c] = dep;
-    tt.arr[c] = dep - stopArr[i] - stopDwell[i] + stopArr[i + 1];
+    tt.dur[c] = stopArr[i + 1] - stopArr[i] - stopDwell[i];
     tt.from[c] = stopArea[i];
     tt.to[c] = stopArea[i + 1];
     tt.trip[c] = t;
@@ -156,7 +156,7 @@ function scan(g: Graph, tt: Timetable, fp: Footpaths, init: Float64Array, t0: nu
     }
   }
   const tEnd = t0 + tMax;
-  const { dep, arr, from, to, trip, flags } = tt;
+  const { dep, dur, from, to, trip, flags } = tt;
   // de eerste connection met dep >= t0
   let lo = 0, hi = tt.n;
   while (lo < hi) {
@@ -173,8 +173,9 @@ function scan(g: Graph, tt: Timetable, fp: Footpaths, init: Float64Array, t0: nu
       board[t] = c;
     }
     const v = to[c];
-    if (arr[c] < arrival[v] && !(flags[c] & NO_ALIGHT) && arr[c] <= tEnd) {
-      arrival[v] = arr[c];
+    const ta = d + dur[c];
+    if (ta < arrival[v] && !(flags[c] & NO_ALIGHT) && ta <= tEnd) {
+      arrival[v] = ta;
       inConn[v] = c;
       inWalk[v] = -1;
       walk(v);
@@ -253,9 +254,9 @@ export function csaPath(g: Graph, tt: Timetable, fp: Footpaths, run: CsaRun, are
         from: name(u),
         to: name(a),
         wait: min(tt.dep[b] - arrival[u]),
-        minutes: min(tt.arr[c] - tt.dep[b]),
+        minutes: min(tt.dep[c] + tt.dur[c] - tt.dep[b]),
         dep: tt.dep[b],
-        arr: tt.arr[c],
+        arr: tt.dep[c] + tt.dur[c],
       });
       a = u;
     } else if (inWalk[a] >= 0) {

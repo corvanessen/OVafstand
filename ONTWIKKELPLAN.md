@@ -1130,7 +1130,7 @@ De JS-heap van de pagina is maar 7–9 MB. De rest buiten onze worker (±130 MB)
 **Kansen, op volgorde van winst:**
 1. ~~**Fietsraster zonder `nbr`/`lenM`** (−50 MB, altijd).~~ Klaar (16 okt 2026, zie "Geheugen, deel 1" hieronder): 82 → 31 MB.
 2. ~~**Kleiner raster per run**, minder runs bewaren.~~ Klaar (16 okt 2026, zie "Geheugen, deel 2"). `time` als Uint16 in 0,1 min (nog −3 MB per run) is niet gedaan: dan verandert de kaart een klein beetje.
-3. **Alleen de dienstregeling van de gekozen dag houden** (−20 tot −45 MB). Opnieuw laden komt uit de HTTP-cache. `arr` als Uint16-duur scheelt nog 2 B per connection.
+3. ~~**Alleen de dienstregeling van de gekozen dag houden**, `arr` als Uint16-duur.~~ Klaar (16 okt 2026, zie "Geheugen, deel 3").
 4. **Fiets-Dijkstra**: `bike` als Uint16 (meters, < 65 km) en `src` als Uint16 (−4 MB elk).
 5. Profielruns (diagram) maken elke keer een raster van 12 MB aan dat meteen weg kan: hergebruiken scheelt GC, niet de piek.
 
@@ -1177,3 +1177,21 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
   - Alleen B verplaatsen kost 129 ms netwerk, tegen 200 ms voor A en B samen: A komt uit de cache.
 
 **Volgende stap:** geheugen deel 3: alleen de dienstregeling van de gekozen dag bewaren.
+
+### Geheugen, deel 3: één dienstregeling tegelijk (16 okt 2026)
+
+- **Eén dag:** `timetables` in de worker houdt alleen de laatst gevraagde dag. Terug naar een andere dag laadt die opnieuw (Node: 150–250 ms, het bestand komt uit de HTTP-cache). Een run in `results` of `runCache` houdt zijn eigen dienstregeling nog vast tot hij wegvalt.
+- **`dur` (Uint16) in plaats van `arr` (Int32):** de aankomst is `dep + dur`. Dat past altijd, want de tijden in `conn_*.bin.gz` zijn al Uint16 vanaf de start van de rit. Een dienstregeling is nu 31 / 22 / 17 MB (was 35 / 25 / 19).
+- **Uitkomst gelijk:** 4 vertrekpunten × 4 vertrektijden × 3 dagen, met alle reistijden en een route met kloktijden. Alle 48 gevallen zijn gelijk aan de oude code. `npm run check` slaagt.
+- **Geheugen van de worker in Chrome** (na GC):
+
+  | Stap | Na deel 2 | Na deel 3 |
+  |---|---|---|
+  | Zondag bekeken (na werkdag en zaterdag) | 271 MB | 248 MB |
+  | Vergelijken (terug naar werkdag) | 313 MB | 279 MB |
+  | Afspelen | 270 MB | 260 MB |
+  | Gestopt | 235 MB | 186 MB |
+
+  Vergeleken met de eerste meting is de worker na gebruik 330 → 186 MB, en bij de start 144 → 90 MB.
+
+**Volgende stap:** geheugen deel 4, de Dijkstra van het fietsraster: `bike` en `src` als Uint16 (−2 MB per array per run, ±8 MB samen). Weinig winst. Daarna terug naar fase 4 stap 3 (testen op een telefoon).

@@ -83,7 +83,7 @@ let graph: Graph | null = null;
 let icAreas: number[] = [];
 let base = "";
 let bike: BikeGrid | null = null;
-// dienstregeling (fase 4): per dag pas geladen als iemand erom vraagt; null = ontbreekt
+// dienstregeling (fase 4): pas geladen als iemand erom vraagt, één dag tegelijk; null = ontbreekt
 const timetables = new Map<Day, Promise<Timetable | null>>();
 let walks: Footpaths | null = null;
 
@@ -186,7 +186,12 @@ async function prepareDay(g: Graph, p: Params): Promise<Timetable | null> {
     return null;
   }
   const info = g.days.find((d) => d.key === p.day)?.conn;
-  if (info && !timetables.has(p.day)) timetables.set(p.day, loadTimetable(base, info).catch(() => null));
+  if (info && !timetables.has(p.day)) {
+    // alleen de dag die nu gevraagd wordt (17–31 MB per dag); terug naar een andere dag laadt die opnieuw
+    // (uit de HTTP-cache, ±150–250 ms). Runs in results en runCache houden hun eigen dag nog even vast.
+    timetables.clear();
+    timetables.set(p.day, loadTimetable(base, info).catch(() => null));
+  }
   const tt = info ? await timetables.get(p.day)! : null;
   if (!tt) {
     console.warn(`dienstregeling van ${p.day} ontbreekt; het uurmodel rekent`);
