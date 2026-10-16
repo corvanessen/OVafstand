@@ -260,7 +260,7 @@ Fase 3, realistisch fietsen:
 - **Daarna, nog open:**
   - ~~`og.png` opnieuw (de standaardkaart is veranderd sinds 6.7 stap 2).~~ Klaar (16 okt 2026), nu met een script: `web/scripts/og.mjs` (zie README);
   - de legenda onderaan de sheet zweeft op de telefoon boven de navigatiebalk onderin (gemeld door de gebruiker na de test op een echt toestel, 16 okt 2026);
-  - de startcellen opnieuw met OSRM voor de 459 weekendhaltes;
+  - ~~de startcellen opnieuw met OSRM voor de 459 weekendhaltes.~~ Klaar (16 okt 2026), zie "Startcellen voor de weekendhaltes";
   - fase 5, de strook van 20 km (NMBS, TEC, Duitsland);
   - fase 4 later: een overstaptijd als instelling, fietsen tussen haltes bij een overstap (ULTRA), CSA per frame bij afspelen;
   - 6.7 stap 3, de andere smaken: reistijd naar een voorziening, inwoners binnen 45 min;
@@ -920,7 +920,7 @@ Op branch `fase6-vergelijk`. Dagen: werkdag di 10 nov, za 14 nov en zo 15 nov 20
 | idem, vertrek 03:00 | | | 2.291 |
 | Utrecht C → Amersfoort, Zon en Schild | 40 min (Sprinter, +3 wacht) | 38 min (IC, +7) | 38 min (IC, +8) |
 
-- **Weekendhaltes.** Er zijn 459 halteplekken die alleen in het weekend gebruikt worden (453 op zaterdag). `bike.bin.gz` heeft voor hen nog geen startcellen. De browser geeft ze die zoals het vertrekpunt: hemelsbreed × 1,3 naar de 3 × 3 cellen eromheen. Beter is de startcellen opnieuw te berekenen met OSRM (`build_bike_grid.py`, alleen het deel met de startcellen, ±5–8 min).
+- **Weekendhaltes.** Er zijn 459 halteplekken die alleen in het weekend gebruikt worden (453 op zaterdag). `bike.bin.gz` heeft voor hen nog geen startcellen (sinds 16 okt 2026 wel, zie "Startcellen voor de weekendhaltes"). De browser geeft ze die zoals het vertrekpunt: hemelsbreed × 1,3 naar de 3 × 3 cellen eromheen. Beter is de startcellen opnieuw te berekenen met OSRM (`build_bike_grid.py`, alleen het deel met de startcellen, ±5–8 min).
 - **Browser.**
   - `Params.day` ("wd", "za", "zo"). De worker laadt een dag pas als hij gekozen wordt (`loadDay`) en zet direct voor het rekenen de arrays van de graaf om (`applyDay`). Tussen twee awaits kan een andere opdracht een andere dag gekozen hebben.
   - `search` slaat halteplekken over waar die dag geen lijn stopt (`areaUsed`). Zonder dat telde de werkdag 29.220 haltes in plaats van 28.960: weekendhaltes, bereikt via een loopkant. Nu is de werkdag weer gelijk aan vroeger.
@@ -1220,3 +1220,10 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
 - **Al in orde:** het contrast van de tekst haalt overal WCAG AA (grijs #667085: 5,0 op wit), zoomen werkt, en de minuten staan ook als tekst in het label en de reisinfo.
 
 **Volgende stap (toegankelijkheid):** de kleinste tekst (legenda en voetregel 11 px, as van het diagram 10 px) naar 12 px, de lettergroottes in `rem` zodat de lettergrootte van de browser meetelt, en `prefers-reduced-motion` voor de overgang en het laadteken.
+
+### Startcellen voor de weekendhaltes (16 okt 2026, branch `startcellen`)
+
+- **Gedaan:** `build_bike_grid.py 20261110` met de opgeslagen rijen in `data/bike_grid/grens/` (die slaat het over), dus alleen de startcellen opnieuw: 34.723 halteplekken in 541 s. Daarna `export_bike_grid.py`. `bike.bin.gz` blijft 4,26 MB.
+- **Alleen de startcellen zijn erbij gekomen:** kanten, snapafstanden en de startcellen van de oude 34.264 halteplekken zijn byte voor byte gelijk. Van de 459 nieuwe hebben er 16 geen weg binnen 250 m; die tekenen een kegel.
+- **Uitkomst:** de werkdag is cel voor cel gelijk (`bench/bikegrid_check.ts`, 12 van 12). In het weekend liggen vanaf Utrecht C, Zwolle, Venlo en Vlissingen 28–51 cellen minder binnen 3 uur (< 0,1%). De benadering (hemelsbreed × 1,3 naar de cellen eromheen) was dus iets te gunstig, maar zat er dicht bij. `npm run check` slaagt.
+- **Valkuil:** de eerste run viel halverwege uit, omdat OSRM wegviel. Windows zet de WSL-VM stil als er geen WSL-proces meer draait; Docker start de container pas weer bij de volgende `wsl`-opdracht, en laden kost dan ±30–140 s. Met `wsl -e bash -lc "sleep 7200"` ernaast ging het goed (staat nu in CLAUDE.md).
