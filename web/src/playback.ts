@@ -8,7 +8,7 @@ import type { Response } from "./worker";
 export type ResultMsg = Extract<Response, { type: "result" }>;
 
 const FRAME_MS = 700; // minimale tijd per stap tijdens afspelen
-const AHEAD = 2; // frames die tijdens afspelen al klaarstaan of onderweg zijn
+const AHEAD = 2; // frames die tijdens afspelen al klaarstaan of onderweg zijn (de worker bewaart KEEP = AHEAD + 1 resultaten)
 const playBtn = $<HTMLButtonElement>("play");
 let playing = false;
 let playGen = 0; // na een wijziging tellen frames die nog onderweg zijn niet meer

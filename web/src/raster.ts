@@ -4,18 +4,19 @@
 import { CELL, NX, NY, ROW_SCALE, X0, Y0, mercX, mercY } from "./grid";
 import { DETOUR, legs, type Graph, type Params, type Search } from "./router";
 
-export const VIA_DIRECT = -1;
-export const VIA_NONE = -2;
+// via is een Uint16Array (scheelt 3 MB per raster): de halteplekken moeten onder VIA_DIRECT blijven
+export const VIA_DIRECT = 65534;
+export const VIA_NONE = 65535;
 
 export interface Raster {
   time: Float32Array; // minuten, Infinity = niet bereikbaar
-  via: Int32Array; // halteplek van de laatste fietsrit, VIA_DIRECT of VIA_NONE
+  via: Uint16Array; // halteplek van de laatste fietsrit, VIA_DIRECT of VIA_NONE
 }
 
 export function newRaster(): Raster {
   return {
     time: new Float32Array(NX * NY).fill(Infinity),
-    via: new Int32Array(NX * NY).fill(VIA_NONE),
+    via: new Uint16Array(NX * NY).fill(VIA_NONE),
   };
 }
 

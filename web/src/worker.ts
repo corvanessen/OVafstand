@@ -96,9 +96,10 @@ interface Run {
   // met de dienstregeling: om de route naar een halteplek opnieuw uit te rekenen (op die dag)
   csa: { tt: Timetable; run: CsaRun; day: Day } | null;
 }
-// de laatste resultaten per id: tijdens afspelen is het getoonde beeld niet het laatst berekende
+// de laatste resultaten per id: tijdens afspelen is het getoonde beeld niet het laatst berekende.
+// Drie: het getoonde beeld plus de twee frames vooruit (AHEAD in playback.ts). Een run kost ±10 MB.
 const results = new Map<number, Run[]>();
-const KEEP = 4;
+const KEEP = 3;
 const CELL_KM2 = 0.0625; // een cel is ±250 × 250 m
 
 /** OV-zoektocht plus het raster (fietsen over de weg of hemelsbreed) voor één vertrekpunt;
@@ -128,8 +129,9 @@ function run(g: Graph, pt: Point | null, p: Params, tt: Timetable | null): Run {
 }
 
 // Bij vergelijken verandert meestal één punt tegelijk (slepen met B): het andere komt uit deze cache.
+// Twee is genoeg: het punt dat blijft staan, is steeds het laatst gebruikt.
 const runCache = new Map<string, Run>();
-const KEEP_RUNS = 4;
+const KEEP_RUNS = 2;
 function cachedRun(g: Graph, pt: Point | null, p: Params, tt: Timetable | null): Run {
   const key = JSON.stringify([pt ? [pt.lat, pt.lon] : "ic", p, bike !== null]);
   const hit = runCache.get(key);
@@ -211,6 +213,7 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       const t0 = performance.now();
       base = m.base;
       graph = await loadGraph(m.base);
+      if (graph.nArea >= VIA_DIRECT) throw new Error(`${graph.nArea} halteplekken: past niet in Raster.via (Uint16)`);
       applyDay(graph, "wd");
       icAreas = icStations(graph);
       post({ type: "ready", date: graph.date, nArea: graph.nArea, ms: performance.now() - t0,

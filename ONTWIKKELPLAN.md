@@ -1128,8 +1128,8 @@ De JS-heap van de pagina is maar 7–9 MB. De rest buiten onze worker (±130 MB)
 | `fillDist` | 6 MB | na de eerste kaart |
 
 **Kansen, op volgorde van winst:**
-1. **Fietsraster zonder `nbr`/`lenM`** (−50 MB, altijd). De buur volgt uit de richting (`cell + off[d]`, dan `nodeOfCell`). Eén byte per halve kant (richting + lengteniveau) is 11 MB in plaats van 62. Kost een extra opzoeking per kant in de Dijkstra: rekentijd meten.
-2. **Kleiner raster per run** (−6 MB per run). `via` als Uint16 (34.723 halteplekken plus twee speciale waarden), eventueel `time` als Uint16 in 0,1 min. Ook minder runs bewaren: `results` hoeft alleen het getoonde beeld plus de frames vooruit (3), en `runCache` deelt die runs.
+1. ~~**Fietsraster zonder `nbr`/`lenM`** (−50 MB, altijd).~~ Klaar (16 okt 2026, zie "Geheugen, deel 1" hieronder): 82 → 31 MB.
+2. ~~**Kleiner raster per run**, minder runs bewaren.~~ Klaar (16 okt 2026, zie "Geheugen, deel 2"). `time` als Uint16 in 0,1 min (nog −3 MB per run) is niet gedaan: dan verandert de kaart een klein beetje.
 3. **Alleen de dienstregeling van de gekozen dag houden** (−20 tot −45 MB). Opnieuw laden komt uit de HTTP-cache. `arr` als Uint16-duur scheelt nog 2 B per connection.
 4. **Fiets-Dijkstra**: `bike` als Uint16 (meters, < 65 km) en `src` als Uint16 (−4 MB elk).
 5. Profielruns (diagram) maken elke keer een raster van 12 MB aan dat meteen weg kan: hergebruiken scheelt GC, niet de piek.
@@ -1145,3 +1145,35 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
 - **Getest** in headless Chrome (desktop en telefoon): status en voetregel, tooltip, reisinfo, zoeken "Ruinen", vergelijken (max, verschil, uit), tijdschuif, diagram 48/48, echte vertrektijden, afspelen, zondag, IC-kaart (95 stations), deellink met `p2`/`m=diff`, bottom sheet. Geen consolefouten.
 
 **Volgende stap:** blijft fase 4 stap 3 (testen op een telefoon). Bij nieuwe functies: pure tekst of rekenwerk in een eigen module zonder DOM, en een regel in `check.ts`.
+
+### Geheugen, deel 1: fietsraster zonder `nbr`/`lenM` (16 okt 2026)
+
+- **Vorm:** één byte per halve kant: richting (0–7 vooruit, 8–15 terug) en lengteniveau. De buur is `nodeOfCell[cel + step[richting]]`, de lengte komt uit `lenTab` (per rij, richting en niveau, 0,7 MB). Daarin staat dezelfde afronding als vroeger, met de rij van de kant "vooruit". De kanten staan in dezelfde volgorde.
+- **Geheugen:** fietsraster 81,7 → 30,7 MB. In Chrome houdt de worker bij de start 93 MB vast (was 144), de renderer is 208 MB (was 278).
+- **Uitkomst:** precies gelijk. `web/bench/bikegrid_check.ts` vergelijkt de rastertijden cel voor cel met een referentie van de oude code (`data/bikegrid_ref.bin`): 6 vertrekpunten × lopen/fiets bij aankomst, 0 cellen anders. In Chrome dezelfde haltetellingen (28.960, 26.355, 21.876, …). `npm run check` klopt.
+- **Rekentijd** (Node, route + raster, beste van 4 × 3, om en om): bij Utrecht C 174–198 → 209–220 ms lopend en 259–271 → 321–340 ms met fiets bij aankomst 15 km (+10–25%). Bij kleinere kaarten (Maastricht, Vlissingen, Aken) is het 0–10%. In Chrome is de eerste kaart 617–656 → 764–809 ms.
+- **Geprobeerd en niet gedaan:**
+  - Het knoopverschil als Int16 per kant (+21 MB) was nauwelijks sneller. De buur opzoeken in `nodeOfCell` is dus niet de vertraging.
+  - `time`/`bike`/`src` van de Dijkstra naast elkaar in één buffer won ook bijna niets.
+
+**Volgende stap:** geheugen deel 2: een kleiner raster per run, en minder runs bewaren.
+
+### Geheugen, deel 2: kleiner raster per run, minder runs (16 okt 2026)
+
+- **`Raster.via` als Uint16** (was Int32): 12,1 → 9,1 MB per raster. `VIA_DIRECT` = 65534 en `VIA_NONE` = 65535. De worker stopt met een fout als de graaf 65534 halteplekken of meer heeft.
+- **`results` bewaart 3 id's** (was 4): het getoonde beeld plus de twee frames vooruit (`AHEAD`). **`runCache` bewaart 2 runs** (was 4): bij slepen met B is A steeds de laatst gebruikte.
+- **Geheugen van de worker in Chrome** (na GC):
+
+  | Stap | Vooraf | Na deel 1 | Na deel 2 |
+  |---|---|---|---|
+  | Start | 144 MB | 93 MB | 90 MB |
+  | Echte vertrektijden (werkdag) | 210 MB | 159 MB | 150 MB |
+  | Vergelijken, 20 s afspelen | 403 MB | 365 MB | 270 MB |
+  | Gestopt | 330 MB | 279 MB | 235 MB |
+
+- **Getest:**
+  - `npm run check` slaagt, het fietsraster is cel voor cel gelijk, en Chrome toont dezelfde haltetellingen.
+  - De tooltip tijdens het afspelen met vergelijken toont steeds een route (40 keer gevraagd).
+  - Alleen B verplaatsen kost 129 ms netwerk, tegen 200 ms voor A en B samen: A komt uit de cache.
+
+**Volgende stap:** geheugen deel 3: alleen de dienstregeling van de gekozen dag bewaren.
