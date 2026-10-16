@@ -18,6 +18,13 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Kaart van Nederland, gekleurd naar reistijd vanaf Utrecht Centraal" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- alleen scripts en verbindingen die de site echt gebruikt: zo kan een ingesmokkeld script niet draaien.
+         Kaarttegels: OpenFreeMap; zoeken: PDOK; bezoekers: GoatCounter. Nieuwe externe dienst? Dan hier toevoegen.
+         style-src 'unsafe-inline' is nodig voor MapLibre (style-attributen) en de CSS van Vite in dev. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://gc.zgo.at;
+      style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://ovafstand.goatcounter.com;
+      connect-src 'self' https://api.pdok.nl https://tiles.openfreemap.org https://ovafstand.goatcounter.com;
+      worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <!-- bezoekers tellen zonder cookies (ovafstand.goatcounter.com); niet op localhost, de hash gaat niet mee -->
     <script data-goatcounter="https://ovafstand.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
   </head>

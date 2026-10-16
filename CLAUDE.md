@@ -70,6 +70,7 @@ De opslagvorm is gekozen: een fietsraster met 16 richtingen, 4 bits per kant, en
 - **IC-kaart (6.7 stap 3):** `source` = `"point"` of `"ic"` (deellink `&k=ic`). Bij `"ic"` start de zoektocht met tijd 0 op alle IC-stations (`icStations` in `worker.ts`: overdag een trein "Intercity…", niet `IFF:NS_INT`; 95 stuks). Het laatste stuk volgt dan `bikeStart`/`directMaxKm`, want het ligt aan de kant van de plek zelf. De reisinfo draait de route om (`icHtml`). Zoeken toont daar de reisinfo in plaats van het vertrekpunt te verplaatsen.
 - **Deellink:** `#lat,lon,naam&w=…&v=…&b=…&d=…&t=…&f=…&u=…&r=1&s=…&a=…&dag=za&k=ic&p2=…&m=diff`, met alleen afwijkingen van `DEFAULTS` in `main.ts`. Ongeldige waarden worden genegeerd (zie README).
 - `og:image` wijst naar de volledige Pages-URL (`corvanessen.github.io/OVafstand/og.png`). `og.png` maak je opnieuw met `node web/scripts/og.mjs` terwijl de preview draait (zie README).
+- **Content-Security-Policy** (meta-tag in `index.html`): alleen OpenFreeMap, PDOK en GoatCounter mogen. Een nieuwe externe dienst moet daar bij, anders blokkeert de browser hem (zie de console).
 - **Bezoekers:** GoatCounter via `track("naam")` in `main.ts`. Stuur alleen namen van gebeurtenissen mee, nooit coördinaten of adressen. Op localhost telt het niet.
 
 ## Verifiëren

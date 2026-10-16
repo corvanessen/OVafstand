@@ -102,7 +102,7 @@ function renderPoints() {
   for (const btn of $("compareMode").querySelectorAll("button")) btn.setAttribute("aria-pressed", String(btn.dataset.mode === compareMode));
   $("compareNote").innerHTML = compareMode === "diff"
     ? `<b>Verschil:</b> bruin is sneller vanaf A, petrol sneller vanaf B. Hoe donkerder, hoe groter het verschil. Grijs: minder dan ${DIFF_EDGES[0]} min.`
-    : "<b>Voor ons allebei:</b> de kleur is de langste van de twee reistijden. Groen is dus snel vanaf A én vanaf B.";
+    : "<b>Voor ons allebei:</b> de kleur is de langste van de twee reistijden. Geel is dus snel vanaf A én vanaf B.";
   renderLegend();
   for (const [id, w] of [["rowA", "a"], ["rowB", "b"]] as const) {
     const row = $(id);
