@@ -162,9 +162,9 @@ OSM  ─┴─> fietsrouting ─> fietstabellen per tegel ──>    bike/{z}/{x
 | **1. Kernmotor** | Graaf voor A+ bouwen, exporteren als binair bestand. Dijkstra in TS, plus een test tegen bekende reizen (vergelijken met 9292 / NS-planner). Klaar. | `graph.bin` en een routing-module met tests |
 | **2. MVP-website** | Kaart, klikken voor het startpunt, PDOK-zoekbalk, heatmap met hemelsbrede fietsafstand (kegeltruc), legenda, tooltip met de reistijd en de route ("fiets 6 min → IC 34 min → fiets 4 min"). Klaar. | Werkende site voor heel NL |
 | **3. Realistisch fietsen** | Fietstabellen via OSRM, tegels opslaan, water en veerboten goed meenemen. Klaar, als één fietsraster in plaats van tegels (zie de resultaten van fase 3). | Correcte randen bij water, nauwkeurig dichtbij |
-| **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". Stap 1 en 2 zijn klaar: "Echte vertrektijden" met de mediaan over 12 vertrekken. Open: stap 3 (testen op een telefoon), CSA per frame bij afspelen, overstaptijd, ULTRA. | Tweede modus |
+| **4. Dienstregelingmodus** | CSA met tijdschuif, profiel of gemiddelde over een venster. Wisselen tussen "ideaal" en "dienstregeling". Stap 1 en 2 zijn klaar: "Echte vertrektijden" met de mediaan over 12 vertrekken. Stap 3 (testen op een telefoon) is klaar. Open: CSA per frame bij afspelen, overstaptijd, ULTRA. | Tweede modus |
 | **5. Grensregio** | België en een uitsnede van Duitsland samenvoegen in de GTFS (stop-ID's laten matchen bij grensstations). Verkend, zie "Verkenning fase 4 en 5". | Kaart tot ongeveer 50 km over de grens |
-| **6. Gebruikers en bereik** | Bezoekers meten, deellink met instellingen, Open Graph, uitleg, mijn locatie, bottom sheet op mobiel, dag-animatie (uurmodel), twee vertrekpunten vergelijken. Klaar, op het testen op een echt toestel na. Later: overstapstraf, alleen trein. Zie "Fase 6 in detail". | Begrijpelijk en deelbaar voor bezoekers zonder voorkennis |
+| **6. Gebruikers en bereik** | Bezoekers meten, deellink met instellingen, Open Graph, uitleg, mijn locatie, bottom sheet op mobiel, dag-animatie (uurmodel), twee vertrekpunten vergelijken. Klaar, ook getest op een echt toestel. Later: overstapstraf, alleen trein. Zie "Fase 6 in detail". | Begrijpelijk en deelbaar voor bezoekers zonder voorkennis |
 
 ### Risico's
 
@@ -255,10 +255,11 @@ Fase 3, realistisch fietsen:
 - ~~Mergen naar `main`.~~ Klaar: PR #8 (16 okt 2026) bracht de verkenning, fase 4, het opruimen en het geheugen naar `main`, dus ook naar Pages.
 - ~~Het geheugen meten en omlaag brengen.~~ Klaar, zie "Geheugenmeting" en "Geheugen, deel 1–3": de worker houdt bij de start 90 MB vast (was 144) en na gebruik 186 MB (was 330).
 - **Nu:**
-  - fase 4, stap 3: testen op een echte telefoon (zie daar);
+  - ~~fase 4, stap 3: testen op een echte telefoon.~~ Klaar (16 okt 2026): het werkt (gebruiker);
   - bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
 - **Daarna, nog open:**
   - `og.png` opnieuw (de standaardkaart is veranderd sinds 6.7 stap 2);
+  - de legenda onderaan de sheet zweeft op de telefoon boven de navigatiebalk onderin (gemeld door de gebruiker na de test op een echt toestel, 16 okt 2026);
   - de startcellen opnieuw met OSRM voor de 459 weekendhaltes;
   - fase 5, de strook van 20 km (NMBS, TEC, Duitsland);
   - fase 4 later: een overstaptijd als instelling, fietsen tussen haltes bij een overstap (ULTRA), CSA per frame bij afspelen;
@@ -1109,7 +1110,7 @@ Het vinkje "Volgens de dienstregeling" bleek niet te begrijpen. Het klonk alsof 
 **Ook gemeten** (`web/bench/coverage.ts`, vanaf Utrecht C, km² binnen 3 uur): de gemiddelde dag 35.142 km² met de fiets bij aankomst, 22.068 lopend. Het uurmodel geeft 34.637 en 21.360, echte vertrektijden 32.392 en 19.556. Dat de kaart kleiner oogt dan vroeger, komt vooral door "Fiets bij aankomst" (standaard uit sinds 6.7 stap 2, −37%). Echte vertrektijden halen er nog 6–8% af.
 
 **Volgende stap (fase 4, stap 3):**
-1. Testen op een telefoon: het geheugen (±31 MB extra), de laadtijd en de twee knoppen in de bottom sheet.
+1. ~~Testen op een telefoon: het geheugen (±31 MB extra), de laadtijd en de twee knoppen in de bottom sheet.~~ Klaar (16 okt 2026): het werkt. Wel zweeft de legenda boven de navigatiebalk onderin (zie "Volgende concrete stap").
 2. Later: een overstaptijd als instelling, en fietsen tussen haltes bij een overstap (ULTRA).
 
 ### Geheugenmeting (15 okt 2026)
@@ -1208,4 +1209,4 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
 
   Vergeleken met de eerste meting is de worker na gebruik 330 → 186 MB, en bij de start 144 → 90 MB.
 
-**Volgende stap:** fase 4 stap 3 (testen op een telefoon); zie "Volgende concrete stap" bovenaan. Geheugen deel 4 (`bike` en `src` als Uint16, ±8 MB) levert weinig op en is optioneel.
+**Volgende stap:** zie "Volgende concrete stap" bovenaan (de telefoontest is klaar). Geheugen deel 4 (`bike` en `src` als Uint16, ±8 MB) levert weinig op en is optioneel.
