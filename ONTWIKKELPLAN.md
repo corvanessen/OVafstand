@@ -258,7 +258,7 @@ Fase 3, realistisch fietsen:
   - ~~fase 4, stap 3: testen op een echte telefoon.~~ Klaar (16 okt 2026): het werkt (gebruiker);
   - bij De Lijn en MIVB toegang tot de actuele GTFS aanvragen (voor fase 5).
 - **Daarna, nog open:**
-  - `og.png` opnieuw (de standaardkaart is veranderd sinds 6.7 stap 2);
+  - ~~`og.png` opnieuw (de standaardkaart is veranderd sinds 6.7 stap 2).~~ Klaar (16 okt 2026), nu met een script: `web/scripts/og.mjs` (zie README);
   - de legenda onderaan de sheet zweeft op de telefoon boven de navigatiebalk onderin (gemeld door de gebruiker na de test op een echt toestel, 16 okt 2026);
   - de startcellen opnieuw met OSRM voor de 459 weekendhaltes;
   - fase 5, de strook van 20 km (NMBS, TEC, Duitsland);
@@ -884,7 +884,7 @@ Op branch `fase6-vergelijk`.
 | lopen aan beide kanten | 28.736 | 55 min |
 
   Het aantal haltes hangt alleen af van het eerste stuk. De kaart wordt met lopen bij aankomst duidelijk vlekkeriger buiten de steden. Ook hemelsbreed (`f=0`), een ongeldige `s=2` en `hashchange` zijn getest. Er waren geen consolefouten.
-- **Nog doen:** `og.png` opnieuw maken, want de standaardkaart is veranderd.
+- **Nog doen:** `og.png` opnieuw maken, want de standaardkaart is veranderd. (Gedaan op 16 okt 2026 met `web/scripts/og.mjs`.)
 
 ### Resultaten fase 6.7, stap 3: naar het dichtstbijzijnde IC-station (15 okt 2026)
 
