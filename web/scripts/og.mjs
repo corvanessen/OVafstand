@@ -4,7 +4,7 @@
 //   node web/scripts/og.mjs [url]                                 (standaard http://localhost:4173/)
 // Chrome staat op de standaardplek van Windows, of geef het pad in CHROME.
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,10 @@ const CSS = `
   #panel .body > *:not(#rowA):not(.legend-wrap) { display: none !important; }
 `;
 
+if (!existsSync(CHROME)) {
+  console.error(`Chrome niet gevonden op ${CHROME}; geef het pad in CHROME`);
+  process.exit(1);
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const profile = mkdtempSync(join(tmpdir(), "og-"));
 const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,

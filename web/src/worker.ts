@@ -21,6 +21,8 @@ export type Request =
   | { type: "init"; base: string }
   | { type: "compute"; id: number; source: Source; a: Point; b: Point | null; mode: CompareMode; params: Params }
   | { type: "explain"; id: number; resultId: number; lat: number; lon: number }
+  // frames die de pagina weggooit (na een wijziging tijdens afspelen, of bij stoppen): niet bewaren
+  | { type: "forget"; ids: number[] }
   // diagram (fase 6.4): bereikbaar oppervlak binnen tMaxMin, voor één vertrektijd
   | { type: "profile"; gen: number; departMin: number; source: Source; a: Point; b: Point | null; params: Params };
 
@@ -96,10 +98,15 @@ interface Run {
   // met de dienstregeling: om de route naar een halteplek opnieuw uit te rekenen (op die dag)
   csa: { tt: Timetable; run: CsaRun; day: Day } | null;
 }
-// de laatste resultaten per id: tijdens afspelen is het getoonde beeld niet het laatst berekende.
-// Drie: het getoonde beeld plus de twee frames vooruit (AHEAD in playback.ts). Een run kost ±10 MB.
+// De resultaten per id, voor de tooltip: tijdens afspelen is het getoonde beeld niet het laatst berekende.
+// De pagina meldt wat ze niet meer nodig heeft ("forget"): het vorige beeld zodra er een nieuw in beeld komt,
+// en de frames die ze weggooit (na een wijziging tijdens afspelen, of bij stoppen). Dan blijven het getoonde
+// beeld en de frames vooruit (AHEAD in playback.ts) over. KEEP is het vangnet daarboven, met plaats voor een
+// gewone kaart die tijdens afspelen tussendoor komt: die staat na de frames, maar komt eerder in beeld.
+// Een run kost ±10 MB.
 const results = new Map<number, Run[]>();
-const KEEP = 3;
+const forgotten = new Set<number>(); // weggegooid terwijl nog onderweg: straks niet bewaren
+const KEEP = 4;
 const CELL_KM2 = 0.0625; // een cel is ±250 × 250 m
 
 /** OV-zoektocht plus het raster (fietsen over de weg of hemelsbreed) voor één vertrekpunt;
@@ -213,6 +220,10 @@ const post = (msg: Response, transfer: Transferable[] = []) => self.postMessage(
 
 self.onmessage = async (ev: MessageEvent<Request>) => {
   const m = ev.data;
+  if (m.type === "forget") {
+    for (const id of m.ids) if (!results.delete(id)) forgotten.add(id);
+    return;
+  }
   try {
     if (m.type === "init") {
       const t0 = performance.now();
@@ -243,8 +254,10 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       canvas.getContext("2d")!.putImageData(img, 0, 0);
       const bitmap = canvas.transferToImageBitmap();
       const t2 = performance.now();
-      results.set(m.id, runs);
-      for (const id of results.keys()) if (results.size > KEEP) results.delete(id);
+      if (!forgotten.delete(m.id)) {
+        results.set(m.id, runs);
+        for (const id of results.keys()) if (results.size > KEEP) results.delete(id);
+      }
       // haltes die vanaf elk punt binnen de kleurschaal liggen; bij "diff": vanaf minstens één, en wie er sneller is
       const tMax = m.params.tMaxMin * 60;
       let reached = 0;

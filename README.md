@@ -93,7 +93,7 @@ Waarom standaard geen dienstregelingsalgoritme zoals CSA of RAPTOR? Een statisch
 
 - Nederland is verdeeld in een raster van **1.147 × 1.380 cellen van ±250 m**. Fietsen gaat met 15 km/u ±250 m per minuut, dus kleinere cellen voegen niets toe.
 - **Fietsraster** ([bikegrid.ts](web/src/bikegrid.ts)), standaard aan:
-  - Offline is met een eigen OSRM-server (fietsprofiel, OpenStreetMap) per cel de wegafstand naar 16 buren berekend. Dat is opgeslagen als 4 bits per kant in `bike.bin.gz` (4,25 MB). Water zonder brug of pont heeft dus geen kant.
+  - Offline is met een eigen OSRM-server (fietsprofiel, OpenStreetMap) per cel de wegafstand naar 16 buren berekend. Dat is opgeslagen als 4 bits per kant in `bike.bin.gz` (4,26 MB). Water zonder brug of pont heeft dus geen kant.
   - Het OSM-extract is NL plus België, Noordrijn-Westfalen en Nedersaksen binnen het raster, dus het fietsen loopt over de grens door.
   - Per halteplek is de afstand naar de 3 × 3 cellen eromheen bewaard. Daar begint het fietsen vanaf een halte.
   - In de browser loopt Dijkstra met een bucketwachtrij over het raster: eerst vanaf het vertrekpunt (fietsgrens vanaf vertrekpunt), daarna vanaf alle bereikte haltes tegelijk (fietsgrens vanaf halte).

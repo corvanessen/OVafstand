@@ -27,6 +27,12 @@ setWorkerUrl(maplibreWorkerUrl);
 initControls(settingsChanged);
 initPlayback({
   request: requestFrame,
+  forget: (gen, ready) => {
+    // ook de frames van die generatie die nog onderweg zijn
+    const ids = [...ready];
+    for (const [id, r] of requests) if (r.kind === "frame" && r.gen === gen) ids.push(id);
+    if (ids.length) send({ type: "forget", ids });
+  },
   show: (f) => {
     syncTime();
     writeHash();
@@ -286,6 +292,8 @@ function crossfade(oldId: string, newId: string, fade: boolean) {
 
 /** een resultaat in beeld brengen; tijdens afspelen met een overgang */
 function showResult(m: ResultMsg, fade: boolean) {
+  // het vorige beeld heeft de worker niet meer nodig (de tooltip vraagt alleen het getoonde op)
+  if (shownId && shownId !== m.id) send({ type: "forget", ids: [shownId] });
   const back = 1 - heatFront;
   (map.getSource(HEAT[back]) as ImageSource).updateImage({ image: m.bitmap });
   crossfade(HEAT[heatFront], HEAT[back], fade);
