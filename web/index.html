@@ -3,14 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>OV-afstand</title>
-    <meta name="description" content="Hoe lang ben je met OV en fiets onderweg naar elke plek in Nederland?" />
+    <title>OV-afstand – reistijdkaart voor trein, bus en fiets in Nederland</title>
+    <meta name="description" content="Kaart van de reistijd met OV en fiets vanaf elk adres in Nederland. Vergelijk twee vertrekpunten, kies een tijdstip of dag, en zie hoe ver je komt." />
+    <!-- de hash (vertrekpunt, instellingen) hoort niet bij het adres: elke deellink is dezelfde pagina.
+         Aanpassen bij een eigen domein, net als og:url en og:image -->
+    <link rel="canonical" href="https://corvanessen.github.io/OVafstand/" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <!-- gestructureerde gegevens voor zoekmachines; een datablok, dus de CSP houdt het niet tegen -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "OV-afstand",
+        "url": "https://corvanessen.github.io/OVafstand/",
+        "description": "Kaart van de reistijd met openbaar vervoer en fiets vanaf elk adres in Nederland, met de echte dienstregeling per uur, werkdag en weekend.",
+        "inLanguage": "nl",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Alle (in de browser)",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+        "image": "https://corvanessen.github.io/OVafstand/og.png",
+        "areaServed": { "@type": "Country", "name": "Nederland" }
+      }
+    </script>
     <!-- deelvoorbeeld; crawlers lezen de hash niet, dus het is voor elke link hetzelfde.
          og:image moet een volledige URL zijn: aanpassen bij een eigen domein -->
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="nl_NL" />
-    <meta property="og:title" content="OV-afstand: reistijd met OV en fiets" />
+    <meta property="og:title" content="OV-afstand: reistijdkaart voor trein, bus en fiets" />
     <meta property="og:description" content="Kies een vertrekpunt en zie hoe lang je met trein, bus en fiets onderweg bent naar elke plek in Nederland." />
     <meta property="og:url" content="https://corvanessen.github.io/OVafstand/" />
     <meta property="og:image" content="https://corvanessen.github.io/OVafstand/og.png" />
@@ -29,6 +49,14 @@
     <script data-goatcounter="https://ovafstand.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
   </head>
   <body>
+    <!-- zonder JavaScript blijft er alleen een lege kaart over; de stijl staat hier, want style.css komt via JS in dev -->
+    <noscript>
+      <div style="position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px;
+        background: #e8eef2; font: 16px/1.5 system-ui, sans-serif; color: #1d2330; text-align: center">
+        <p><b>OV-afstand</b> is een kaart van de reistijd met trein, bus en fiets in Nederland.<br />
+          Zet JavaScript aan om de kaart te gebruiken.</p>
+      </div>
+    </noscript>
     <div id="app" class="loading">
       <div id="map"></div>
 

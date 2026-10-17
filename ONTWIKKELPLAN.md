@@ -1227,3 +1227,12 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
 - **Alleen de startcellen zijn erbij gekomen:** kanten, snapafstanden en de startcellen van de oude 34.264 halteplekken zijn byte voor byte gelijk. Van de 459 nieuwe hebben er 16 geen weg binnen 250 m; die tekenen een kegel.
 - **Uitkomst:** de werkdag is cel voor cel gelijk (`bench/bikegrid_check.ts`, 12 van 12). In het weekend liggen vanaf Utrecht C, Zwolle, Venlo en Vlissingen 28–51 cellen minder binnen 3 uur (< 0,1%). De benadering (hemelsbreed × 1,3 naar de cellen eromheen) was dus iets te gunstig, maar zat er dicht bij. `npm run check` slaagt.
 - **Valkuil:** de eerste run viel halverwege uit, omdat OSRM wegviel. Windows zet de WSL-VM stil als er geen WSL-proces meer draait; Docker start de container pas weer bij de volgende `wsl`-opdracht, en laden kost dan ±30–140 s. Met `wsl -e bash -lc "sleep 7200"` ernaast ging het goed (staat nu in CLAUDE.md).
+
+### Vindbaarheid (SEO), stap 1 (16 okt 2026, branch `startcellen`)
+
+- Titel "OV-afstand – reistijdkaart voor trein, bus en fiets in Nederland", een beschrijving met wat je kunt doen (vergelijken, tijdstip, dag), en `og:title` daarop afgestemd.
+- `<link rel="canonical">` naar de Pages-URL: elke deellink (hash) is dezelfde pagina.
+- JSON-LD (`WebApplication`, gratis, `TravelApplication`). Een datablok, dus de CSP houdt het niet tegen (getest: geen overtredingen).
+- `<noscript>`: een korte uitleg in plaats van een lege kaart.
+
+**Volgende stap (vindbaarheid, door de eigenaar):** aanmelden bij Google Search Console en Bing Webmaster Tools. Later eventueel een eigen domein (dan ook canonical, `og:url`, `og:image`, JSON-LD en de CSP aanpassen) en pagina's per stad.
