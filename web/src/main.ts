@@ -27,6 +27,12 @@ setWorkerUrl(maplibreWorkerUrl);
 initControls(settingsChanged);
 initPlayback({
   request: requestFrame,
+  forget: (gen, ready) => {
+    // ook de frames van die generatie die nog onderweg zijn
+    const ids = [...ready];
+    for (const [id, r] of requests) if (r.kind === "frame" && r.gen === gen) ids.push(id);
+    if (ids.length) send({ type: "forget", ids });
+  },
   show: (f) => {
     syncTime();
     writeHash();
@@ -102,7 +108,7 @@ function renderPoints() {
   for (const btn of $("compareMode").querySelectorAll("button")) btn.setAttribute("aria-pressed", String(btn.dataset.mode === compareMode));
   $("compareNote").innerHTML = compareMode === "diff"
     ? `<b>Verschil:</b> bruin is sneller vanaf A, petrol sneller vanaf B. Hoe donkerder, hoe groter het verschil. Grijs: minder dan ${DIFF_EDGES[0]} min.`
-    : "<b>Voor ons allebei:</b> de kleur is de langste van de twee reistijden. Groen is dus snel vanaf A én vanaf B.";
+    : "<b>Voor ons allebei:</b> de kleur is de langste van de twee reistijden. Geel is dus snel vanaf A én vanaf B.";
   renderLegend();
   for (const [id, w] of [["rowA", "a"], ["rowB", "b"]] as const) {
     const row = $(id);
@@ -249,7 +255,9 @@ map.on("load", () => {
 
 // ---------- heatmap: twee lagen die in elkaar overvloeien ----------
 const HEAT = ["heat0", "heat1"];
-const HEAT_OPACITY = 0.72;
+const HEAT_OPACITY = 0.8;
+// de legenda met dezelfde dekking, zodat de kleuren gelijk ogen aan die op de kaart
+document.documentElement.style.setProperty("--heat-opacity", String(HEAT_OPACITY));
 const FADE_MS = 400; // overgang tussen twee frames
 const FADE_STEP_MS = 50;
 let heatFront = 0;
@@ -284,6 +292,8 @@ function crossfade(oldId: string, newId: string, fade: boolean) {
 
 /** een resultaat in beeld brengen; tijdens afspelen met een overgang */
 function showResult(m: ResultMsg, fade: boolean) {
+  // het vorige beeld heeft de worker niet meer nodig (de tooltip vraagt alleen het getoonde op)
+  if (shownId && shownId !== m.id) send({ type: "forget", ids: [shownId] });
   const back = 1 - heatFront;
   (map.getSource(HEAT[back]) as ImageSource).updateImage({ image: m.bitmap });
   crossfade(HEAT[heatFront], HEAT[back], fade);

@@ -8,7 +8,8 @@ import type { Response } from "./worker";
 export type ResultMsg = Extract<Response, { type: "result" }>;
 
 const FRAME_MS = 700; // minimale tijd per stap tijdens afspelen
-const AHEAD = 2; // frames die tijdens afspelen al klaarstaan of onderweg zijn (de worker bewaart KEEP = AHEAD + 1 resultaten)
+const AHEAD = 2; // frames die tijdens afspelen al klaarstaan of onderweg zijn (de worker bewaart er KEEP = AHEAD + 2;
+// weggegooide frames meldt dropFrames, zodat die niet meetellen)
 const playBtn = $<HTMLButtonElement>("play");
 let playing = false;
 let playGen = 0; // na een wijziging tellen frames die nog onderweg zijn niet meer
@@ -19,6 +20,7 @@ let playTimer = 0;
 
 let deps: {
   request: (min: number, gen: number) => void; // een frame laten uitrekenen
+  forget: (gen: number, ready: number[]) => void; // de frames van deze generatie zijn weg (ready: de id's die al klaar waren)
   show: (f: ResultMsg) => void; // params.departMin is dan al de tijd van het frame
 };
 export function initPlayback(d: typeof deps) {
@@ -51,6 +53,7 @@ playBtn.addEventListener("click", () => (playing ? stopPlaying() : startPlaying(
 
 /** frames met oude instellingen weggooien (na een wijziging, of bij stoppen) */
 function dropFrames() {
+  deps.forget(playGen, [...frames.values()].map((f) => f.id));
   playGen++;
   for (const f of frames.values()) f.bitmap.close();
   frames.clear();

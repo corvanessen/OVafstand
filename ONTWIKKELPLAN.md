@@ -241,7 +241,7 @@ Fase 3, realistisch fietsen:
 - ~~Het grensextract (strook BE en DE) en fietspontjes controleren.~~ Klaar (stap 8). Daarmee is fase 3 af.
 - ~~Fase 6.1, snelle winst.~~ Klaar, zie "Resultaten fase 6.1".
 - ~~Bezoekers meten (6.2).~~ Klaar, zie "Resultaten fase 6.2".
-- ~~De smartphone (6.3).~~ Klaar in de emulatie, zie "Resultaten fase 6.3". Testen op een echt toestel moet de gebruiker nog doen.
+- ~~De smartphone (6.3).~~ Klaar in de emulatie, zie "Resultaten fase 6.3". Op een echt toestel getest op 16 okt 2026: het werkt, op de legenda boven de navigatiebalk na.
 - ~~6.4 deel 1: het uurmodel en een tijdschuif met afspelen.~~ Klaar, zie "Resultaten fase 6.4, deel 1".
 - ~~Nachtlijnen en halve uren in het uurmodel.~~ Klaar, zie "Resultaten fase 6.4: nachtlijnen en halve uren".
 - ~~6.4 deel 2: frames vooruit rekenen, overgang, diagram.~~ Klaar, zie "Resultaten fase 6.4, deel 2".
@@ -260,7 +260,7 @@ Fase 3, realistisch fietsen:
 - **Daarna, nog open:**
   - ~~`og.png` opnieuw (de standaardkaart is veranderd sinds 6.7 stap 2).~~ Klaar (16 okt 2026), nu met een script: `web/scripts/og.mjs` (zie README);
   - de legenda onderaan de sheet zweeft op de telefoon boven de navigatiebalk onderin (gemeld door de gebruiker na de test op een echt toestel, 16 okt 2026);
-  - de startcellen opnieuw met OSRM voor de 459 weekendhaltes;
+  - ~~de startcellen opnieuw met OSRM voor de 459 weekendhaltes.~~ Klaar (16 okt 2026), zie "Startcellen voor de weekendhaltes";
   - fase 5, de strook van 20 km (NMBS, TEC, Duitsland);
   - fase 4 later: een overstaptijd als instelling, fietsen tussen haltes bij een overstap (ULTRA), CSA per frame bij afspelen;
   - 6.7 stap 3, de andere smaken: reistijd naar een voorziening, inwoners binnen 45 min;
@@ -920,7 +920,7 @@ Op branch `fase6-vergelijk`. Dagen: werkdag di 10 nov, za 14 nov en zo 15 nov 20
 | idem, vertrek 03:00 | | | 2.291 |
 | Utrecht C → Amersfoort, Zon en Schild | 40 min (Sprinter, +3 wacht) | 38 min (IC, +7) | 38 min (IC, +8) |
 
-- **Weekendhaltes.** Er zijn 459 halteplekken die alleen in het weekend gebruikt worden (453 op zaterdag). `bike.bin.gz` heeft voor hen nog geen startcellen. De browser geeft ze die zoals het vertrekpunt: hemelsbreed × 1,3 naar de 3 × 3 cellen eromheen. Beter is de startcellen opnieuw te berekenen met OSRM (`build_bike_grid.py`, alleen het deel met de startcellen, ±5–8 min).
+- **Weekendhaltes.** Er zijn 459 halteplekken die alleen in het weekend gebruikt worden (453 op zaterdag). `bike.bin.gz` had voor hen eerst geen startcellen. De browser gaf ze die zoals het vertrekpunt: hemelsbreed × 1,3 naar de 3 × 3 cellen eromheen. Sinds 16 okt 2026 komen ze uit OSRM, zie "Startcellen voor de weekendhaltes".
 - **Browser.**
   - `Params.day` ("wd", "za", "zo"). De worker laadt een dag pas als hij gekozen wordt (`loadDay`) en zet direct voor het rekenen de arrays van de graaf om (`applyDay`). Tussen twee awaits kan een andere opdracht een andere dag gekozen hebben.
   - `search` slaat halteplekken over waar die dag geen lijn stopt (`areaUsed`). Zonder dat telde de werkdag 29.220 haltes in plaats van 28.960: weekendhaltes, bereikt via een loopkant. Nu is de werkdag weer gelijk aan vroeger.
@@ -1159,7 +1159,7 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
 - **`npm run check`** (`web/bench/check.ts`): de validatie (Utrecht C model A: 27 / 37 / 111 min; 28.960 haltes binnen 3 uur; CSA-route naar Groningen met kloktijden) plus de reisinfo-HTML. 17 controles, ±5 s.
 - **Getest** in headless Chrome (desktop en telefoon): status en voetregel, tooltip, reisinfo, zoeken "Ruinen", vergelijken (max, verschil, uit), tijdschuif, diagram 48/48, echte vertrektijden, afspelen, zondag, IC-kaart (95 stations), deellink met `p2`/`m=diff`, bottom sheet. Geen consolefouten.
 
-**Volgende stap:** blijft fase 4 stap 3 (testen op een telefoon). Bij nieuwe functies: pure tekst of rekenwerk in een eigen module zonder DOM, en een regel in `check.ts`.
+**Volgende stap:** zie "Volgende concrete stap" bovenaan (de telefoontest is inmiddels klaar). Bij nieuwe functies: pure tekst of rekenwerk in een eigen module zonder DOM, en een regel in `check.ts`.
 
 ### Geheugen, deel 1: fietsraster zonder `nbr`/`lenM` (16 okt 2026)
 
@@ -1210,3 +1210,43 @@ Na fase 6 en fase 4 was `main.ts` 1.374 regels met ±40 losse globale variabelen
   Vergeleken met de eerste meting is de worker na gebruik 330 → 186 MB, en bij de start 144 → 90 MB.
 
 **Volgende stap:** zie "Volgende concrete stap" bovenaan (de telefoontest is klaar). Geheugen deel 4 (`bike` en `src` als Uint16, ±8 MB) levert weinig op en is optioneel.
+
+### Toegankelijkheid, stap 1: kleurenschaal voor kleurenblinden (16 okt 2026, branch `startcellen`)
+
+- **Probleem.** De oude schaal (groen → geel → rood → paars, zoals RdYlGn) werd eerst lichter en daarna donkerder. Bij rood-groenblindheid (±8% van de mannen) vielen banden samen: in een simulatie (Machado, ΔE in CIELAB, 72% dekking over de basiskaart) lag 15–30 min (#a6d96a) bij 75–90 min (#fdae61) op ΔE 5 (deuteranopie), en 30–45 en 45–60 min op ΔE 1.
+- **Nieuwe schaal: viridis**, van geel (dichtbij) via groen en blauw naar paars. De helderheid loopt gelijkmatig af, dus de volgorde is ook zonder tint te lezen. Kleinste ΔE tussen twee banden die geen buren zijn: normaal 22, deuteranopie 11, protanopie 12, tritanopie 10 (oud: 23 / 5 / 3 / 20). Vergeleken met plasma, magma, inferno en YlGnBu: viridis scoort het best bij protanopie. Magma en YlGnBu beginnen te licht naast de lichtgrijze basiskaart.
+- **Dekking 0,72 → 0,8**, en de legenda heeft dezelfde dekking (`--heat-opacity`, gezet vanuit `HEAT_OPACITY` in `main.ts`), zodat de kleuren in de legenda gelijk ogen aan die op de kaart.
+- De stand "Verschil" (bruin en petrol, BrBG) was al veilig en blijft gelijk. Uitleg, `favicon.svg` en `og.png` zijn aangepast.
+- **Al in orde:** het contrast van de tekst haalt overal WCAG AA (grijs #667085: 5,0 op wit), zoomen werkt, en de minuten staan ook als tekst in het label en de reisinfo.
+
+**Volgende stap (toegankelijkheid):** de kleinste tekst (legenda en voetregel 11 px, as van het diagram 10 px) naar 12 px, de lettergroottes in `rem` zodat de lettergrootte van de browser meetelt, en `prefers-reduced-motion` voor de overgang en het laadteken.
+
+### Startcellen voor de weekendhaltes (16 okt 2026, branch `startcellen`)
+
+- **Gedaan:** `build_bike_grid.py 20261110` met de opgeslagen rijen in `data/bike_grid/grens/` (die slaat het over), dus alleen de startcellen opnieuw: 34.723 halteplekken in 541 s. Daarna `export_bike_grid.py`. `bike.bin.gz` is 4,26 MB (was 4,25).
+- **Alleen de startcellen zijn erbij gekomen:** kanten, snapafstanden en de startcellen van de oude 34.264 halteplekken zijn byte voor byte gelijk. Van de 459 nieuwe hebben er 16 geen weg binnen 250 m; die tekenen een kegel.
+- **Uitkomst:** de werkdag is cel voor cel gelijk (`bench/bikegrid_check.ts`, 12 van 12). In het weekend liggen vanaf Utrecht C, Zwolle, Venlo en Vlissingen 28–51 cellen minder binnen 3 uur (< 0,1%). De benadering (hemelsbreed × 1,3 naar de cellen eromheen) was dus iets te gunstig, maar zat er dicht bij. `npm run check` slaagt.
+- **Valkuil:** de eerste run viel halverwege uit, omdat OSRM wegviel. Windows zet de WSL-VM stil als er geen WSL-proces meer draait; Docker start de container pas weer bij de volgende `wsl`-opdracht, en laden kost dan ±30–140 s. Met `wsl -e bash -lc "sleep 7200"` ernaast ging het goed (staat nu in CLAUDE.md).
+
+### Vindbaarheid (SEO), stap 1 (16 okt 2026, branch `startcellen`)
+
+- Titel "OV-afstand – reistijdkaart voor trein, bus en fiets in Nederland", een beschrijving met wat je kunt doen (vergelijken, tijdstip, dag), en `og:title` daarop afgestemd.
+- `<link rel="canonical">` naar de Pages-URL: elke deellink (hash) is dezelfde pagina.
+- JSON-LD (`WebApplication`, gratis, `TravelApplication`). Een datablok, dus de CSP houdt het niet tegen (getest: geen overtredingen).
+- `<noscript>`: een korte uitleg in plaats van een lege kaart.
+
+**Volgende stap (vindbaarheid, door de eigenaar):** aanmelden bij Google Search Console en Bing Webmaster Tools. Later eventueel een eigen domein (dan ook canonical, `og:url`, `og:image`, JSON-LD en de CSP aanpassen) en pagina's per stad.
+
+### Bevindingen van roborev verwerkt (17 okt 2026, branch `startcellen`)
+
+Nagelopen: de reviews van de commits sinds geheugen deel 2 (`roborev show <id>`, 20 en 23–27).
+- **Tooltip tijdens afspelen (review 20, echt).** Met `KEEP = 3` kon het getoonde beeld uit `results` vallen. Daarna gaf de tooltip "Niet bereikbaar", ook vlak naast het vertrekpunt. Dat gebeurde na een wijziging tijdens het afspelen: oude frames staan dan nog in de wachtrij, `restartFrames()` vraagt meteen nieuwe aan, en de gewone kaart komt daarna, maar eerder in beeld.
+  - **Oplossing:** de pagina stuurt de worker `forget` voor wat ze niet meer nodig heeft. Dat is het vorige beeld zodra er een nieuw in beeld komt, en de frames die `dropFrames` weggooit, ook als die nog onderweg zijn (de worker bewaart ze dan niet). `KEEP` = 4 is het vangnet.
+  - **Getest** in headless Chrome: tijdens afspelen 30 keer de fietssnelheid wisselen, en elke 100 ms de tooltip naast het vertrekpunt lezen (240 metingen). De oude code gaf 56 en 62 keer "Niet bereikbaar", de nieuwe 0 keer (3 runs). Eerst geprobeerd: het getoonde id meesturen, en daarna het hoogste. Dat werkte niet, want het getoonde beeld schuift niet alleen vooruit (de gewone kaart heeft een hoger id dan de frames die erna komen).
+  - **Geheugen** (worker, Chrome): bij vergelijken met afspelen 260 → 225 MB, na stoppen 186 → 165 MB, omdat weggegooide frames meteen vrijkomen.
+- **`og.mjs`:** zonder Chrome op de opgegeven plek stopt het nu met een duidelijke melding, in plaats van een ENOENT zonder opruimen.
+- **Documentatie:**
+  - CLAUDE.md zei "Alles hieronder … staat in main" over werk dat erboven staat (nu "hierboven, ook het opruimen");
+  - de bullet over de weekendhaltes sprak zichzelf tegen;
+  - `bike.bin.gz` is 4,26 MB (was 4,25);
+  - twee plekken noemden de telefoontest nog als open.

@@ -66,9 +66,11 @@ export function rasterize(g: Graph, s: Search, origin: { lat: number; lon: numbe
   return r;
 }
 
-// Kleurschaal: banden van 15 minuten, van groen (dichtbij) via geel en oranje naar paars (ver)
-const RAMP = ["#1a9850", "#66bd63", "#a6d96a", "#d9ef8b", "#fee08b", "#fdae61",
-  "#f46d43", "#d73027", "#a50026", "#7b1f5c", "#54278f", "#3f007d"];
+// Kleurschaal: banden van 15 minuten, viridis van geel (dichtbij) via groen en blauw naar paars (ver).
+// De helderheid loopt gelijkmatig af, zodat de banden ook bij kleurenblindheid uit elkaar te houden zijn
+// (de oude schaal groen-geel-rood: bij rood-groenblindheid waren 30 en 75 min dezelfde kleur).
+const RAMP = ["#fde725", "#c2df23", "#86d549", "#52c569", "#2ab07f", "#1e9b8a",
+  "#25858e", "#2d708e", "#38588c", "#433e85", "#482173", "#440154"];
 export const BAND_MIN = 15;
 
 function hex(c: string): [number, number, number] {

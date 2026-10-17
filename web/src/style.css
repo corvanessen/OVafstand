@@ -192,7 +192,7 @@ h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
 #toast[hidden] { display: none; }
 
 .legend-wrap { margin: 4px 0 18px; }
-#legend { display: flex; height: 12px; border-radius: 3px; overflow: hidden; }
+#legend { display: flex; height: 12px; border-radius: 3px; overflow: hidden; opacity: var(--heat-opacity, 1); }
 #legend span { flex: 1; }
 #legendLabels { position: relative; height: 14px; font-size: 11px; color: var(--muted); margin-top: 3px; }
 #legendLabels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
