@@ -13,8 +13,8 @@ export function setSheet(s: Sheet) {
   panel.dataset.sheet = s;
   if (s !== "full") panel.scrollTop = 0;
 }
-// via een gedeelde link gaat het om de kaart; bij een eerste bezoek om zoeken en de voorbeelden
-setSheet(location.hash ? "collapsed" : "half");
+// eerst de kaart, met vertrekpunt en legenda eronder; zoeken en de voorbeelden zijn één tik verder
+setSheet("collapsed");
 
 // Slepen aan de greep of de kop: de sheet volgt de vinger, en springt bij loslaten naar de
 // dichtstbijzijnde stand (een snelle veeg: een stand verder in die richting). Tikken klapt open of dicht.
