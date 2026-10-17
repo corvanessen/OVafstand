@@ -1,0 +1,15 @@
+{
+  "name": "OV-afstand – reistijdkaart",
+  "short_name": "OV-afstand",
+  "description": "Kaart van de reistijd met trein, bus en fiets vanaf elk adres in Nederland.",
+  "lang": "nl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e8eef2",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

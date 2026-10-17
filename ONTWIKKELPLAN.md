@@ -1250,3 +1250,20 @@ Nagelopen: de reviews van de commits sinds geheugen deel 2 (`roborev show <id>`,
   - de bullet over de weekendhaltes sprak zichzelf tegen;
   - `bike.bin.gz` is 4,26 MB (was 4,25);
   - twee plekken noemden de telefoontest nog als open.
+
+### Vergelijking met andere sites (17 okt 2026, branch `vergelijking`)
+
+Bekeken (broncode en schermafbeeldingen, desktop en telefoon): **OVLive** (ovlive.nl, realtime posities van voertuigen; een ander doel) en **MapItOut** (Welcome to NL / iamsterdam, op de betaalde TravelTime API: één contour "binnen 60 min" vanaf een adres, meerdere adressen met de overlap, scholen; Engels, voor expats).
+- **Wij zijn sterker in:** een reistijd per plek (niet ja/nee) met de route, tijdstip/nacht/weekend/echte vertrektijden, de IC-kaart en "Verschil", meta en toegankelijkheid.
+- **Zij zijn sterker in:** eenvoud bij de eerste blik (één vraag, één invoerkaart), meer dan twee punten met de overlap, de kaart die voorrang krijgt op de telefoon, autoriteit (eigen domein, links vanaf iamsterdam.com en het Algoritmeregister), installeerbaar (manifest).
+
+**Gedaan (stap 1):**
+- **Kaartlabels in het Nederlands.** De Positron-stijl kiest `name_en` ("The Hague", "Netherlands"). Na het laden zet `main.ts` elke symboollaag met `name_en` om naar `name:nl`, anders `name` (de naam ter plekke: "Münster", "Antwerpen"). Wegnummers blijven zoals ze zijn.
+- **Op het beginscherm te zetten:** `manifest.webmanifest`, `icon-192.png`/`icon-512.png` (maskable) en `apple-touch-icon.png`, gemaakt uit `favicon.svg` met `web/scripts/icons.mjs`; `theme-color` wit. De CSP laat het manifest door via `default-src 'self'`.
+- **Op de telefoon start de sheet ingeklapt**, ook bij een eerste bezoek (was: half open). Eerst de kaart, met het vertrekpunt en de legenda eronder; zoeken is één tik op de greep verder.
+
+**Volgende stappen (na akkoord op een schets):**
+- Een rustiger paneel: dag en tijdstip samen in één inklapbaar blok "Wanneer?" met een samenvatting.
+- Kleur: viridis houden, maar boven 2 uur lichter of minder verzadigd, zodat verre gebieden minder zwaar ogen.
+- Een eigen domein en links van andere sites (eigenaar).
+- Later, als eigen fase: overlap van 3–4 punten (geheugen: 13,5 MB per run) en een Engelse versie.

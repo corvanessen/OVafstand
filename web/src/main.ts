@@ -243,6 +243,12 @@ map.on("load", () => {
       map.addLayer({ ...(l as LayerSpecification), id: l.id + "-mask" } as LayerSpecification, firstRoad);
     }
   }
+  // de stijl kiest de Engelse naam ("The Hague"); wij de Nederlandse, anders de naam ter plekke
+  for (const l of layers) {
+    if (l.type === "symbol" && JSON.stringify(l.layout?.["text-field"] ?? "").includes("name_en")) {
+      map.setLayoutProperty(l.id, "text-field", ["coalesce", ["get", "name:nl"], ["get", "name"]]);
+    }
+  }
   // MapLibre toont de bronvermelding eerst uitgeklapt; op een telefoon bedekt die dan een flink stuk kaart
   // en het midden van de kaart (het vertrekpunt na flyTo) hoort boven de sheet, niet eronder
   if (narrow.matches) {
