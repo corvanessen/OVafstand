@@ -20,6 +20,7 @@ web/                 Vite + TypeScript + MapLibre
   bench/check.ts     vaste controle in Node: npm run check (validatie, reisinfo-HTML)
   bench/             verder: metingen in Node (CSA, geheugen, fietsraster), bundelen met rolldown
   scripts/og.mjs     og.png (deelvoorbeeld) opnieuw maken met Chrome headless
+  scripts/icons.mjs  app-iconen (manifest, beginscherm) uit favicon.svg maken met Chrome headless
   -- rekenkern (in de worker) --
   src/worker.ts      Web Worker: laadt de data, rekent kaarten, legt routes uit
   src/router.ts      graph.bin en de dagen laden, Dijkstra, route-uitleg
