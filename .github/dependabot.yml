@@ -1,0 +1,23 @@
+# Wekelijks een PR voor nieuwe versies van de npm-pakketten en de GitHub Actions.
+# Beveiligingsupdates komen los daarvan meteen (zet "Dependabot security updates" aan onder Settings → Code security).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    # een nieuwe versie pas na een week overnemen, zodat een besmette release eerst is ontdekt
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
