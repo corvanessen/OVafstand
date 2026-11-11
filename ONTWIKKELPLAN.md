@@ -1326,4 +1326,34 @@ Zonder fiets loop je nu 5 km/u, tot 2 km, over het **fietsraster** (6.7 stap 2).
 - **Bedrijfszaken:**
   - Twee OSRM-servers tegelijk (±3,5 GB elk) plus de 8 threads van de rasterbouw lieten de WSL-VM (9 GB) herstarten. Bouw met één server tegelijk.
   - `osrm-voet` crashte met SIGBUS toen de externe SSD haperde, en schreef een core dump van 3,8 GB op C:. Nu draaien de servers met `--ulimit core=0`, en de `.fileIndex` (0,5 GB, bij elke vraag gelezen via mmap) staat op de WSL-schijf.
-- **Volgende stap (1):** het looptraster voor heel NL bouwen met `build_bike_grid.py --profile foot` en start in 7 × 7 cellen (`SEED_R = 3`), en exporteren als `walk.bin.gz`.
+- ~~**Volgende stap (1):** het looptraster voor heel NL bouwen met `build_bike_grid.py --profile foot` en start in 7 × 7 cellen (`SEED_R = 3`), en exporteren als `walk.bin.gz`.~~ Klaar, zie hieronder.
+
+### Resultaten stap 1–3: looptraster voor heel NL, in de browser (11 nov 2026)
+
+- **Bouw.** `build_bike_grid.py --profile foot` met `THREADS=14`: 173 rijen in ±5 uur, met alleen de loopserver (de fietsserver gestopt). Daarna de startcellen van 34.723 halteplekken in 20 min.
+  - De startcellen liepen eerst vast. Een vraag van 50 haltes × 49 cellen kost los ±9 s, en met 14 threads tegelijk kwamen ze over de time-out van 120 s. Het script herstartte OSRM dan, die moest koud opnieuw laden, en zo liep het rond. Nu gaan er bij lopen 10 haltes in een vraag (±2 s), op volgorde van rastercel.
+  - De SSD viel één keer weg in WSL. Opnieuw koppelen zonder herstart werkte (zie CLAUDE.md).
+- **Uitvoer.** `walk.bin.gz` is 5,54 MB (8,8 MB ruw: kanten 6,3, snap 0,8, startcellen 1,7). Het fietsraster is 4,26 MB.
+  - 981.078 cellen hebben een voetpad binnen 250 m (62%, fiets 979.738).
+  - Er zijn 5,5 miljoen kanten na snoeien.
+  - 442 halteplekken hebben geen enkele startcel.
+- **Nauwkeurigheid** (`walk_check.ts --loop --max=30`, dezelfde steekproef als stap 0):
+
+| Regio | Paren | > 5 min fout | > 2 min fout | Hemelsbreed × 1,3 > 5 min | p50 / p90 / p98 (min) |
+|---|---|---|---|---|---|
+| Utrecht | 2.514 | 1,2% | 12,0% | 11,1% | 0,0 / 2,3 / 4,3 |
+| Zeeland | 2.589 | 1,1% | 7,6% | 15,5% | 0,0 / 1,6 / 4,4 |
+| Den Haag | 3.163 | 0,6% | 9,2% | 9,9% | 0,1 / 1,9 / 3,6 |
+| Amsterdam | 3.771 | 0,2% | 9,1% | 3,7% | 0,1 / 1,9 / 3,3 |
+| Arnhem/Veluwezoom | 2.513 | 0,3% | 9,9% | 10,7% | 0,0 / 2,0 / 3,4 |
+| **Totaal** | 14.550 | **0,7%** | 9,5% | 9,7% | |
+
+  Over het fietsraster was dat 16,3% (stap 0b), en het sluit aan bij de proef met 7 × 7 (0,5%).
+- **Browser.**
+  - De voetregel noemt nu "over de weg en voetpaden".
+  - De telling vanaf Utrecht C blijft 28.960 (standaard). Met lopen bij vertrek (`&s=0`) blijft het ook 28.645: lopend bereik je 58 haltes direct, tegen 57 over het fietsraster, maar dat verandert niets binnen 3 uur.
+  - Met fiets aan beide kanten is de kaart cel voor cel gelijk aan de referentie (`bikegrid_check.ts`). Met lopen wijkt hij af, zoals bedoeld.
+  - Rekentijd route + raster bij lopen bij aankomst: Utrecht C 334 ms, Venlo 194 ms, Aken 58 ms.
+- **Geheugen** (`mem_check.ts`). Het looptraster kost 41,5 MB, het fietsraster 30,7 MB. Het verschil zit in de startcellen: `seedNode` en `seedDist` zijn 6,5 MB elk. Met `seedDist` als byte (× `seedStep`, zoals in het bestand) scheelt dat ±5 MB.
+- **Gevonden tijdens het testen: HTM ontbreekt.** De feed van 10 okt bevat de dienstregeling van HTM maar tot 8 nov, terwijl de feed tot 12 dec loopt. Op alle drie de gekozen dagen (10, 14 en 15 nov) rijdt in Den Haag dus geen tram of bus van HTM: ±4.000 ritten per werkdag. Scheveningen heeft daardoor geen halte binnen 3,9 km. Ook De Lijn stopt na 14 nov, dus op zondag 15 nov rijdt daar niets. Dit staat los van lopen, en zat er al vanaf fase 0 in.
+- **Volgende stap:** een nieuwe feed met HTM, en daarbij per vervoerder controleren dat de gekozen dag erin zit. Daarna eventueel `seedDist` als byte.

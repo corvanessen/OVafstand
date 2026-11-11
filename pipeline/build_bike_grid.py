@@ -17,6 +17,7 @@ en bij een nieuwe start overgeslagen. Resultaat: data/bike_grid/grens_raw.npz me
 OSRM-afstanden (float32, meters). Het coderen voor de browser (4 bits, snoeien) is een aparte stap.
 """
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -39,7 +40,7 @@ OUT = ROOT / "data" / ("walk_grid" if FOOT else "bike_grid")
 PARTS = OUT / "grens"
 
 BLOCK = 8          # cellen per blok per OSRM-verzoek
-THREADS = 8
+THREADS = int(os.environ.get("THREADS", 8))   # parallelle OSRM-verzoeken; met 14 benut OSRM de 16 cores beter
 SEED_R = 3 if FOOT else 1   # halte → knopen van (2R+1)² cellen
 DIRS = [(1, 0), (0, 1), (1, 1), (-1, 1), (2, 1), (1, 2), (-1, 2), (-2, 1)]
 M_I = max(abs(di) for di, _ in DIRS)
@@ -157,10 +158,14 @@ def build_seeds():
     offs = [(dj, di) for dj in range(-SEED_R, SEED_R + 1) for di in range(-SEED_R, SEED_R + 1)]
     dist = np.full((n, len(offs)), np.inf, np.float32)   # halte (gesnapt) → celknoop, meters
     hsnap = np.full(n, np.inf, np.float32)               # halte → zijn gesnapte punt
-    B = 50
+    # Rekentijd per vraag groeit met haltes × cellen: bij 7 × 7 kost 50 haltes ±9 s, en 14 threads tegelijk
+    # liepen dan over de time-out van 120 s. Daarom kleinere batches bij lopen.
+    B = 10 if FOOT else 50
+    # Op volgorde van rastercel, zodat de haltes in één batch dicht bij elkaar liggen.
+    order = np.lexsort((oi // 8, oj // 8))
 
     def batch(s0):
-        ids = np.arange(s0, min(s0 + B, n))
+        ids = order[s0:s0 + B]
         cj = np.clip(oj[ids, None] + [o[0] for o in offs], 0, NY - 1)
         ci = np.clip(oi[ids, None] + [o[1] for o in offs], 0, NX - 1)
         la = np.r_[lat[ids], clat[cj.ravel()]]

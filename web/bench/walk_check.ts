@@ -5,7 +5,7 @@
 //   cd web && npx rolldown bench/walk_check.ts --platform node -o ../data/walk_check.mjs && node ../data/walk_check.mjs
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadBikeGrid, rasterizeBike } from "../src/bikegrid";
+import { loadBikeGrid, loadWalkGrid, rasterizeBike } from "../src/bikegrid";
 import { CELL, NX, NY, X0, Y0, mercX, mercY } from "../src/grid";
 import { applyDay, distM, loadGraph, DETOUR, type Params, type Search } from "../src/router";
 import { DEFAULTS } from "../src/state";
@@ -30,6 +30,8 @@ const SNAP_MAX = 250; // cel zonder voetpad binnen 250 m telt niet mee (weiland,
 // --max=30: alleen paren met OSRM-voet ≤ 30 min (2 km lopen, de loopgrens); verdere paren komen met die grens
 // niet op de kaart. Zelfde filter als pipeline/walk_pairs_summary.py (stap 0b).
 const MAX_T = Number(process.argv.find((a) => a.startsWith("--max="))?.slice(6) ?? Infinity);
+// --loop: over het looptraster (walk.bin.gz, stap 1) in plaats van het fietsraster; zonder de fietsserver
+const LOOP = process.argv.includes("--loop");
 const N_STOPS = 30;
 const REGIONS: Record<string, [number, number, number, number]> = { // lat_min, lat_max, lon_min, lon_max
   utrecht: [51.95, 52.25, 4.85, 5.35],
@@ -38,8 +40,11 @@ const REGIONS: Record<string, [number, number, number, number]> = { // lat_min, 
   amsterdam: [52.33, 52.4, 4.85, 4.95],
   "arnhem/veluwezoom": [51.95, 52.06, 5.85, 6.05],
 };
-// lopen over het fietsraster, zonder afkapping binnen het venster: 5 km/u, grens ruim boven RADIUS_M
-const P: Params = { ...DEFAULTS, bikeKmh: KMH, bikeMaxKm: 4, directMaxKm: 4, bikeEnd: true };
+// lopen, zonder afkapping binnen het venster: grens ruim boven RADIUS_M. Over het fietsraster: als "fiets
+// bij aankomst" met looptempo; over het looptraster: lopen bij aankomst.
+const P: Params = LOOP
+  ? { ...DEFAULTS, walkKmh: KMH, walkMaxKm: 4, bikeEnd: false }
+  : { ...DEFAULTS, bikeKmh: KMH, bikeMaxKm: 4, directMaxKm: 4, bikeEnd: true };
 
 /** vaste toevalsgenerator (mulberry32), zodat de steekproef elke keer gelijk is */
 function rng(seed: number) {
@@ -81,6 +86,8 @@ async function main() {
   const g = await loadGraph(WEB);
   applyDay(g, "wd");
   const bg = (await loadBikeGrid(WEB, g))!;
+  const grids = { bike: bg, walk: LOOP ? (await loadWalkGrid(WEB, g))! : null };
+  console.log(LOOP ? "over het looptraster (fietsserver niet gebruikt: kolommen met fietsOSRM tellen niet)" : "over het fietsraster");
   const v = (KMH / 3.6) * 60; // meter per minuut
   const total = { n: 0, g5: 0, g2: 0, m5: 0, b5: 0, r5: 0, miss: 0 };
   console.log(`lopen ${KMH} km/u, cellen binnen ${RADIUS_M} m hemelsbreed van ${N_STOPS} haltes per regio; fout = schatting − OSRM-voet${MAX_T < Infinity ? `; alleen OSRM-voet ≤ ${MAX_T} min` : ""}`);
@@ -103,7 +110,7 @@ async function main() {
       // raster: alleen deze halte als bron, op tijd 0
       const dist = new Float64Array(g.nArea).fill(Infinity);
       dist[a] = 0;
-      const time = rasterizeBike({ bike: bg, walk: null }, g, { dist } as unknown as Search, null, P).time;
+      const time = rasterizeBike(grids, g, { dist } as unknown as Search, null, P).time;
 
       const oi = Math.floor((mercX(lon) - X0) / CELL), oj = Math.floor((mercY(lat) - Y0) / CELL);
       const R = Math.ceil((RADIUS_M * 1.8) / CELL);
@@ -115,12 +122,12 @@ async function main() {
           pts.push([cellLat(j), cellLon(i)]);
         }
       }
-      const [foot, bike] = await Promise.all([table(FOOT, pts), table(BIKE, pts)]);
+      const [foot, bike] = await Promise.all([table(FOOT, pts), LOOP ? null : table(BIKE, pts)]);
       if (foot.sources[0].distance > SNAP_MAX) continue;
       for (let k = 0; k < cells.length; k++) {
         const T = walked(foot, k) / v;
         if (!Number.isFinite(T) || T > MAX_T) continue;
-        const B = walked(bike, k) / v;
+        const B = bike ? walked(bike, k) / v : NaN;
         const G = time[cells[k]];
         const M = (distM(lat, lon, pts[k + 1][0], pts[k + 1][1]) * DETOUR) / v;
         c.n++;
