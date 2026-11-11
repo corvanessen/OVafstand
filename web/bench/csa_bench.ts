@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { applyDay, loadDay, loadGraph, search, straightAccess, type Graph, type Params } from "../src/router";
+import { DEFAULTS } from "../src/state";
 
 const ROOT = resolve(import.meta.dirname ?? ".", "..");
 const DATE = process.argv[2] ?? "20261110";
@@ -96,10 +97,7 @@ function median(xs: number[]) {
   return s[s.length >> 1];
 }
 
-const P: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: false,
-  departMin: null, bikeStart: true, bikeEnd: false, day: "wd", timetable: false,
-};
+const P: Params = { ...DEFAULTS, realBike: false };
 
 const PLACES: [string, number, number][] = [
   ["Utrecht C", 52.0894, 5.11],

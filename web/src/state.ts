@@ -6,7 +6,7 @@ import type { CompareMode, Source } from "./worker";
 
 export const DEFAULTS: Params = {
   waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true, departMin: null,
-  bikeStart: true, bikeEnd: false, day: "wd", timetable: false,
+  bikeStart: true, bikeEnd: false, walkKmh: 4, walkMaxKm: 2, day: "wd", timetable: false,
 };
 export const params: Params = { ...DEFAULTS };
 

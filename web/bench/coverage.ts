@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { loadBikeGrid, originAccess, rasterizeBike } from "../src/bikegrid";
 import { csaSearch, footpaths, loadTimetable } from "../src/csa";
 import { applyDay, loadDay, loadGraph, search, type Params } from "../src/router";
+import { DEFAULTS } from "../src/state";
 
 const WEB = resolve(import.meta.dirname ?? ".", "../web/public/data") + "/";
 globalThis.fetch = (async (url: string) => {
@@ -15,10 +16,7 @@ globalThis.fetch = (async (url: string) => {
   }
 }) as typeof fetch;
 
-const BASE: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true,
-  departMin: null, bikeStart: true, bikeEnd: false, day: "wd", timetable: false,
-};
+const BASE: Params = { ...DEFAULTS };
 const CELL_KM2 = 0.0625;
 
 async function main() {

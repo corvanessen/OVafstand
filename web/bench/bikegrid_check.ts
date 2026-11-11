@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { loadBikeGrid, originAccess, rasterizeBike } from "../src/bikegrid";
 import { NX, NY } from "../src/grid";
 import { applyDay, loadGraph, search, type Params } from "../src/router";
+import { DEFAULTS } from "../src/state";
 
 const ROOT = resolve(import.meta.dirname ?? ".", "..");
 const WEB = ROOT + "/web/public/data/";
@@ -18,10 +19,7 @@ globalThis.fetch = (async (url: string) => {
   }
 }) as typeof fetch;
 
-const P: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true,
-  departMin: null, bikeStart: true, bikeEnd: false, day: "wd", timetable: false,
-};
+const P: Params = { ...DEFAULTS };
 const POINTS: [string, number, number][] = [
   ["Utrecht C", 52.0894, 5.11], ["Venlo", 51.3645, 6.1712], ["Maastricht", 50.8497, 5.7056],
   ["Groningen", 53.2105, 6.5641], ["Vlissingen", 51.4426, 3.5966], ["Aken", 50.7676, 6.0911],

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { csaPath, csaSearch, footpaths, loadTimetable } from "../src/csa";
 import { applyDay, loadDay, loadGraph, search, straightAccess, type Day, type Params } from "../src/router";
+import { DEFAULTS } from "../src/state";
 
 const WEB = resolve(import.meta.dirname ?? ".", "../web/public/data") + "/";
 globalThis.fetch = (async (url: string) => {
@@ -14,10 +15,7 @@ globalThis.fetch = (async (url: string) => {
   }
 }) as typeof fetch;
 
-const P: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: false,
-  departMin: 480, bikeStart: true, bikeEnd: false, day: "wd", timetable: true,
-};
+const P: Params = { ...DEFAULTS, realBike: false, departMin: 480, timetable: true };
 const TARGETS = ["Amsterdam Centraal", "Rotterdam Centraal", "Zwolle", "Groningen"];
 
 async function main() {

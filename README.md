@@ -186,6 +186,8 @@ Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.1
 | `r` | met `u`: echte vertrektijden (1) of gemiddelde wachttijd (0) | 0 |
 | `s` | fiets bij vertrek (1) of lopen (0) | 1 |
 | `a` | fiets bij aankomst (1) of lopen (0) | 0 |
+| `lt` | looptempo (km/u), 3–6 in stappen van 0,5 | 4 |
+| `l` | lopen, max (km), 0,5–8 in stappen van 0,5 | 2 |
 | `p2` | punt B bij vergelijken: `lat,lon,naam` (naam URL-gecodeerd) | geen: één vertrekpunt |
 | `dag` | `za` of `zo`: de dienstregeling van zaterdag of zondag | werkdag |
 | `k` | `ic` = de kaart naar het dichtstbijzijnde IC-station (het vertrekpunt blijft in de link) | de kaart vanaf het vertrekpunt |

@@ -1,6 +1,9 @@
 """Fase 3: het fietsraster coderen voor de browser.
 
-Gebruik:  python pipeline/export_bike_grid.py
+Gebruik:  python pipeline/export_bike_grid.py [--profile foot]
+
+--profile foot: het looptraster, data/walk_grid/grens_raw.npz → web/public/data/walk.bin.gz, header "LOPEN1"
+(verder hetzelfde formaat; seedR staat in de header).
 
 Leest data/bike_grid/grens_raw.npz (van build_bike_grid.py) en schrijft web/public/data/bike.bin.gz.
 Keuzes (zie ONTWIKKELPLAN.md, fase 3, stap 5):
@@ -19,13 +22,16 @@ Formaat (little endian), daarna gzip:
 """
 import gzip
 import struct
+import sys
 from pathlib import Path
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW = ROOT / "data" / "bike_grid" / "grens_raw.npz"
-OUT = ROOT / "web" / "public" / "data" / "bike.bin.gz"
+FOOT = "--profile" in sys.argv and sys.argv[sys.argv.index("--profile") + 1] == "foot"
+RAW = ROOT / "data" / ("walk_grid" if FOOT else "bike_grid") / "grens_raw.npz"
+OUT = ROOT / "web" / "public" / "data" / ("walk.bin.gz" if FOOT else "bike.bin.gz")
+MAGIC = b"LOPEN1\0\0" if FOOT else b"FIETS1\0\0"
 
 LEVELS = np.array([1.0, 1.04, 1.08, 1.13, 1.19, 1.26, 1.35, 1.46, 1.6, 1.8, 2.05, 2.4, 2.9, 3.6, 4.5])
 SNAP_MAX, SNAP_STEP = 250.0, 17.0
@@ -112,7 +118,7 @@ def main():
     if len(snaps) % 2:
         snaps = np.r_[snaps, 15].astype(np.uint8)
     snaps = (snaps[0::2] << 4 | snaps[1::2]).astype(np.uint8)
-    head = b"FIETS1\0\0" + struct.pack("<4HI", NX, NY, len(dirs), R_, n_area)
+    head = MAGIC + struct.pack("<4HI", NX, NY, len(dirs), R_, n_area)
     head += b"".join(struct.pack("<2b", di, dj) for di, dj in dirs)
     head += struct.pack(f"<{len(LEVELS)}f", *LEVELS) + struct.pack("<2f", SNAP_STEP, SEED_STEP)
     raw = head + edges.tobytes() + snaps.tobytes() + seeds.tobytes()

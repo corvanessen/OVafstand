@@ -54,8 +54,10 @@ export interface Params {
   directMaxKm: number; // max fietsafstand vanaf het vertrekpunt (direct, of naar de eerste halte)
   tMaxMin: number; // kleurschaal en zoekgrens
   realBike: boolean; // fietsen over de weg (fietsraster uit OSM) in plaats van hemelsbreed × DETOUR
-  bikeStart: boolean; // fiets bij vertrek; anders lopen (WALK_KMH, tot WALK_MAX_KM)
+  bikeStart: boolean; // fiets bij vertrek; anders lopen (walkKmh, tot walkMaxKm)
   bikeEnd: boolean; // fiets bij aankomst (van de laatste halte naar de bestemming); anders lopen
+  walkKmh: number; // looptempo
+  walkMaxKm: number; // max loopafstand, naar of van een halte en direct
   // vertrektijd in minuten na middernacht (uurmodel, realistische wachttijd per uur);
   // null = een gemiddelde dag 07–19 u met waitFactor
   departMin: number | null;
@@ -65,17 +67,15 @@ export interface Params {
 }
 
 export const DETOUR = 1.3; // hemelsbreed -> over de weg
-export const WALK_KMH = 5;
-export const WALK_MAX_KM = 2; // ±25 min lopen naar of van een halte (en direct lopen)
 
 /** snelheid (m/s) en grens (m) van het eerste stuk (vanaf het vertrekpunt) en het laatste (vanaf de halte):
  *  fietsen, of lopen als die fiets er niet is. Lopen gaat over hetzelfde fietsraster, met een andere snelheid. */
 export function legs(p: Params) {
   return {
-    startV: (p.bikeStart ? p.bikeKmh : WALK_KMH) / 3.6,
-    startMax: (p.bikeStart ? p.directMaxKm : WALK_MAX_KM) * 1000,
-    endV: (p.bikeEnd ? p.bikeKmh : WALK_KMH) / 3.6,
-    endMax: (p.bikeEnd ? p.bikeMaxKm : WALK_MAX_KM) * 1000,
+    startV: (p.bikeStart ? p.bikeKmh : p.walkKmh) / 3.6,
+    startMax: (p.bikeStart ? p.directMaxKm : p.walkMaxKm) * 1000,
+    endV: (p.bikeEnd ? p.bikeKmh : p.walkKmh) / 3.6,
+    endMax: (p.bikeEnd ? p.bikeMaxKm : p.walkMaxKm) * 1000,
   };
 }
 const KIND_BOARD = 1;

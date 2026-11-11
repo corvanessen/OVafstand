@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { csaSearch, footpaths, loadTimetable, type Timetable } from "../src/csa";
 import { loadBikeGrid, originAccess, rasterizeBike } from "../src/bikegrid";
 import { applyDay, loadDay, loadGraph, search, type Day, type Params } from "../src/router";
+import { DEFAULTS } from "../src/state";
 
 const WEB = resolve(import.meta.dirname ?? ".", "../web/public/data") + "/";
 globalThis.fetch = (async (url: string) => {
@@ -15,10 +16,7 @@ globalThis.fetch = (async (url: string) => {
   }
 }) as typeof fetch;
 
-const P: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true,
-  departMin: 480, bikeStart: true, bikeEnd: false, day: "wd", timetable: true,
-};
+const P: Params = { ...DEFAULTS, departMin: 480, timetable: true };
 
 const MB = (b: number) => (b / 2 ** 20).toFixed(1).padStart(7) + " MB";
 const gc = (globalThis as { gc?: () => void }).gc ?? (() => {});

@@ -1,8 +1,10 @@
-// Deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&r=1&s=1&a=0&dag=za&k=ic&p2=lat,lon,naam&m=diff
+// Deellink: #lat,lon,naam&w=0.5&v=15&b=5&d=15&t=180&f=1&u=480&r=1&s=1&a=0&lt=4&l=2&dag=za&k=ic&p2=lat,lon,naam&m=diff
+// (lt = looptempo, l = loopgrens in km)
 // Alleen afwijkingen van de standaard komen in de link; onbekende of ongeldige waarden worden genegeerd.
 // p2 is punt B bij vergelijken (b is al de fietsgrens), m=diff de stand "Verschil",
 // k=ic de kaart naar het dichtstbijzijnde IC-station (het vertrekpunt blijft erin staan).
 
+import { inRange } from "./format";
 import type { Params } from "./router";
 import { DEFAULTS, params, state, type Origin } from "./state";
 import { $ } from "./ui";
@@ -10,7 +12,7 @@ import type { CompareMode, Source } from "./worker";
 
 const HASH_KEYS = {
   w: "waitFactor", v: "bikeKmh", b: "bikeMaxKm", d: "directMaxKm", t: "tMaxMin", f: "realBike", u: "departMin",
-  s: "bikeStart", a: "bikeEnd", r: "timetable",
+  s: "bikeStart", a: "bikeEnd", r: "timetable", lt: "walkKmh", l: "walkMaxKm",
 } as const;
 type HashParam = (typeof HASH_KEYS)[keyof typeof HASH_KEYS];
 
@@ -22,8 +24,7 @@ function parseSetting(key: HashParam, raw: string): number | boolean | null {
   if (key === "waitFactor") return [...document.querySelectorAll<HTMLInputElement>("input[name=model]")].some((r) => +r.value === v) ? v : null;
   if (key === "tMaxMin") return [...$<HTMLSelectElement>("tMaxMin").options].some((o) => +o.value === v) ? v : null;
   const input = $<HTMLInputElement>(key);
-  const steps = (v - +input.min) / +input.step;
-  return v >= +input.min && v <= +input.max && Math.abs(steps - Math.round(steps)) < 1e-6 ? v : null;
+  return inRange(v, +input.min, +input.max, +input.step) ? v : null;
 }
 
 /** "lat,lon,naam" (de naam URL-gecodeerd, dus zonder & of ,) */

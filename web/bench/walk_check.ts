@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { loadBikeGrid, rasterizeBike } from "../src/bikegrid";
 import { CELL, NX, NY, X0, Y0, mercX, mercY } from "../src/grid";
 import { applyDay, distM, loadGraph, DETOUR, type Params, type Search } from "../src/router";
+import { DEFAULTS } from "../src/state";
 
 const ROOT = resolve(import.meta.dirname ?? ".", "..");
 const WEB = ROOT + "/web/public/data/";
@@ -38,10 +39,7 @@ const REGIONS: Record<string, [number, number, number, number]> = { // lat_min, 
   "arnhem/veluwezoom": [51.95, 52.06, 5.85, 6.05],
 };
 // lopen over het fietsraster, zonder afkapping binnen het venster: 5 km/u, grens ruim boven RADIUS_M
-const P: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: KMH, bikeMaxKm: 4, directMaxKm: 4, tMaxMin: 180, realBike: true,
-  departMin: null, bikeStart: true, bikeEnd: true, day: "wd", timetable: false,
-};
+const P: Params = { ...DEFAULTS, bikeKmh: KMH, bikeMaxKm: 4, directMaxKm: 4, bikeEnd: true };
 
 /** vaste toevalsgenerator (mulberry32), zodat de steekproef elke keer gelijk is */
 function rng(seed: number) {

@@ -1,6 +1,9 @@
 """Fase 3: fietsraster voor heel NL bouwen met de eigen OSRM-server (localhost:5000).
 
-Gebruik:  python pipeline/build_bike_grid.py [YYYYMMDD]
+Gebruik:  python pipeline/build_bike_grid.py [YYYYMMDD] [--profile foot]
+
+--profile foot bouwt het looptraster (lopen, stap 1): loopserver op :5001 (osrm_setup.sh voet), rijen in
+data/walk_grid/grens/, startcellen in 7 × 7 cellen (stap 0b: 0,5% van de paren > 5 min fout, tegen 4,1% bij 3 × 3).
 
 De OSRM-server moet het grensextract draaien (bash pipeline/osrm_setup.sh grens): NL plus de strook
 BE en DE binnen het raster. Tot stap 8 was dat alleen NL (data/bike_grid/nl/ en nl_raw.npz).
@@ -25,15 +28,19 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-DATE = sys.argv[1] if len(sys.argv) > 1 else "20261110"
-OSRM = "http://localhost:5000/table/v1/bike/"
-CONTAINER = "osrm-fiets"   # zie osrm_setup.sh
-OUT = ROOT / "data" / "bike_grid"
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+FOOT = "--profile" in sys.argv and sys.argv[sys.argv.index("--profile") + 1] == "foot"
+if FOOT:
+    ARGS.remove("foot")
+DATE = ARGS[0] if ARGS else "20261110"
+OSRM = "http://localhost:5001/table/v1/foot/" if FOOT else "http://localhost:5000/table/v1/bike/"
+CONTAINER = "osrm-voet" if FOOT else "osrm-fiets"   # zie osrm_setup.sh
+OUT = ROOT / "data" / ("walk_grid" if FOOT else "bike_grid")
 PARTS = OUT / "grens"
 
 BLOCK = 8          # cellen per blok per OSRM-verzoek
 THREADS = 8
-SEED_R = 1         # halte → knopen van (2R+1)² cellen
+SEED_R = 3 if FOOT else 1   # halte → knopen van (2R+1)² cellen
 DIRS = [(1, 0), (0, 1), (1, 1), (-1, 1), (2, 1), (1, 2), (-1, 2), (-2, 1)]
 M_I = max(abs(di) for di, _ in DIRS)
 M_J = max(dj for _, dj in DIRS)
@@ -90,7 +97,7 @@ def table(lats, lons, sources=None, destinations=None):
             if "timed out" in str(err):
                 restart_osrm()
             time.sleep(5 * (attempt + 1))
-    raise RuntimeError("OSRM (localhost:5000) onbereikbaar; start met: bash pipeline/osrm_setup.sh start")
+    raise RuntimeError(f"OSRM ({OSRM}) onbereikbaar; start met: bash pipeline/osrm_setup.sh {'voet-start' if FOOT else 'start'}")
 
 
 def block(bj, bi):
@@ -182,7 +189,7 @@ def main():
                         seed_j=oj, seed_i=oi, seed_dist=seed_dist, seed_snap=seed_snap, seed_r=SEED_R)
     node = snap <= 250
     print(f"klaar: {OUT / 'grens_raw.npz'}")
-    print(f"cellen met een fietsbare weg binnen 250 m: {node.sum()} van {node.size} ({node.mean():.1%})")
+    print(f"cellen met een {'beloopbare' if FOOT else 'fietsbare'} weg binnen 250 m: {node.sum()} van {node.size} ({node.mean():.1%})")
     print(f"kanten: {np.isfinite(road).sum()}, halteplekken met een weg binnen 250 m: {(seed_snap <= 250).mean():.1%}")
 
 

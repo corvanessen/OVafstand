@@ -7,8 +7,9 @@ import { resolve } from "node:path";
 import { loadBikeGrid, originAccess } from "../src/bikegrid";
 import { csaPath, csaSearch, footpaths, loadTimetable } from "../src/csa";
 import { diffText, explainHtml, hoverHtml, type ExplainCtx } from "../src/explain";
-import { clockSec, fmtMin } from "../src/format";
-import { applyDay, loadDay, loadGraph, search, straightAccess, type Params } from "../src/router";
+import { clockSec, fmtMin, inRange } from "../src/format";
+import { applyDay, legs, loadDay, loadGraph, search, straightAccess, type Params } from "../src/router";
+import { DEFAULTS } from "../src/state";
 
 const WEB = resolve(import.meta.dirname ?? ".", "../web/public/data") + "/";
 globalThis.fetch = (async (url: string) => {
@@ -19,11 +20,6 @@ globalThis.fetch = (async (url: string) => {
   }
 }) as typeof fetch;
 
-// gelijk aan DEFAULTS in main.ts
-const DEFAULTS: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true, departMin: null,
-  bikeStart: true, bikeEnd: false, day: "wd", timetable: false,
-};
 const UTRECHT = { lat: 52.0894, lon: 5.11 };
 
 let failed = 0;
@@ -46,6 +42,21 @@ async function main() {
   expect("model A Utrecht C → Amsterdam Centraal", min(dA, "Amsterdam Centraal"), 27);
   expect("model A Utrecht C → Rotterdam Centraal", min(dA, "Rotterdam Centraal"), 37);
   expect("model A Utrecht C → Groningen", min(dA, "Groningen"), 111);
+
+  // lopen: tempo en grens komen uit de instellingen (standaard 4 km/u, tot 2 km)
+  const kmh = (v: number) => Math.round(v * 3.6 * 1000) / 1000;
+  expect("lopen bij vertrek: standaardtempo", kmh(legs({ ...DEFAULTS, bikeStart: false }).startV), 4);
+  expect("lopen bij vertrek: standaardgrens", legs({ ...DEFAULTS, bikeStart: false }).startMax, 2000);
+  expect("lopen bij aankomst volgt walkKmh", kmh(legs({ ...DEFAULTS, walkKmh: 5.5 }).endV), 5.5);
+  expect("lopen bij aankomst volgt walkMaxKm", legs({ ...DEFAULTS, walkMaxKm: 3.5 }).endMax, 3500);
+
+  // deellink: een getal telt alleen binnen het bereik en op de stap van de schuif (allowlist, hash.ts)
+  const walkSlider = [0.5, 8, 0.5] as const; // min, max, stap van "Lopen, max"
+  expect("deellink: l=3 geldig", inRange(3, ...walkSlider), true);
+  expect("deellink: l=99 buiten bereik", inRange(99, ...walkSlider), false);
+  expect("deellink: l=-1 buiten bereik", inRange(-1, ...walkSlider), false);
+  expect("deellink: l=1.3 niet op de stap", inRange(1.3, ...walkSlider), false);
+  expect("deellink: lt=abc geen getal", inRange(Number("abc"), 3, 6, 0.5), false);
 
   // de standaardkaart met het fietsraster, en met fiets bij aankomst (de statusregel in de browser)
   const bike = await loadBikeGrid(WEB, g);
