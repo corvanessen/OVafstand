@@ -25,7 +25,8 @@ BUREN="belgium germany/nordrhein-westfalen germany/niedersachsen"
 
 mkdir -p "$DIR"
 cd "$DIR"
-MOUNTS=()   # extra bind-mounts voor de container (zie voet)
+MOUNTS=()         # extra bind-mounts voor de verwerking (zie voet)
+SERVE_MOUNTS=()   # extra bind-mounts voor de server (zie voet)
 run() { $DOCKER run --rm -t -v "$DIR:/data" "${MOUNTS[@]}" "$IMG" "$@"; }
 osmium() { $DOCKER run --rm -v "$DIR:/data" -w /data osmium-tool osmium "$@"; }
 get() { local f; f=$(basename "$1"); curl -fsSL -R -z "$f" -o "$f" "$GEOFABRIK/$1"; }   # alleen als Geofabrik nieuwer is
@@ -87,12 +88,19 @@ case "${1:-nl}" in
     else MOUNTS=(-v "$SRC:/data/grens-voet.osm.pbf:ro")
     fi
     if [[ $1 == voet ]]; then process grens-voet; fi
+    if [[ $DIR != ~/osrm ]]; then
+      # osrm-routed leest de ruimtelijke index (.fileIndex) bij elke vraag via mmap. Een hapering van de externe
+      # schijf gaf SIGBUS (11 nov 2026). Daarom staat die index (±0,5 GB) op de WSL-schijf; de rest leest hij bij de start.
+      cp -u grens-voet.osrm.fileIndex ~/osrm/grens-voet.osrm.fileIndex
+      SERVE_MOUNTS=(-v ~/osrm/grens-voet.osrm.fileIndex:/data/grens-voet.osrm.fileIndex:ro)
+    fi
     ;;
   *) echo "onbekend: $1 (nl | grens | start | voet | voet-start)"; exit 1 ;;
 esac
 
 echo "== server $NAME starten op :$PORT met $BASE"
 $DOCKER rm -f "$NAME" >/dev/null 2>&1 || true
-$DOCKER run -d --restart unless-stopped --name "$NAME" -p "$PORT:5000" -v "$DIR:/data" "$IMG" \
+# --ulimit core=0: een crash schreef een core dump van 3,8 GB in de container (11 nov 2026)
+$DOCKER run -d --restart unless-stopped --ulimit core=0 --name "$NAME" -p "$PORT:5000" -v "$DIR:/data" "${SERVE_MOUNTS[@]}" "$IMG" \
   osrm-routed --algorithm mld --max-table-size 10000 "/data/$BASE.osrm"
 echo "klaar: curl 'http://localhost:$PORT/route/v1/x/5.11,52.09;5.12,52.10'"

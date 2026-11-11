@@ -26,6 +26,9 @@ const BIKE = "http://localhost:5000/table/v1/bike/";
 const KMH = 4; // stevig doorwandelen (keuze van Cor); de app rekende tot nu toe met 5
 const RADIUS_M = 2000; // cellen binnen 2 km hemelsbreed (de loopgrens nu)
 const SNAP_MAX = 250; // cel zonder voetpad binnen 250 m telt niet mee (weiland, water)
+// --max=30: alleen paren met OSRM-voet ≤ 30 min (2 km lopen, de loopgrens); verdere paren komen met die grens
+// niet op de kaart. Zelfde filter als pipeline/walk_pairs_summary.py (stap 0b).
+const MAX_T = Number(process.argv.find((a) => a.startsWith("--max="))?.slice(6) ?? Infinity);
 const N_STOPS = 30;
 const REGIONS: Record<string, [number, number, number, number]> = { // lat_min, lat_max, lon_min, lon_max
   utrecht: [51.95, 52.25, 4.85, 5.35],
@@ -82,7 +85,7 @@ async function main() {
   const bg = (await loadBikeGrid(WEB, g))!;
   const v = (KMH / 3.6) * 60; // meter per minuut
   const total = { n: 0, g5: 0, g2: 0, m5: 0, b5: 0, r5: 0, miss: 0 };
-  console.log(`lopen ${KMH} km/u, cellen binnen ${RADIUS_M} m hemelsbreed van ${N_STOPS} haltes per regio; fout = schatting − OSRM-voet`);
+  console.log(`lopen ${KMH} km/u, cellen binnen ${RADIUS_M} m hemelsbreed van ${N_STOPS} haltes per regio; fout = schatting − OSRM-voet${MAX_T < Infinity ? `; alleen OSRM-voet ≤ ${MAX_T} min` : ""}`);
   console.log("regio               paren  raster>5  raster>2  hemelsbr>5  fietsOSRM>5  raster-fietsOSRM>5  niet bereikt  raster p50/p90/p98 (min)");
   for (const [name, [la0, la1, lo0, lo1]] of Object.entries(REGIONS)) {
     const inside: number[] = [];
@@ -118,7 +121,7 @@ async function main() {
       if (foot.sources[0].distance > SNAP_MAX) continue;
       for (let k = 0; k < cells.length; k++) {
         const T = walked(foot, k) / v;
-        if (!Number.isFinite(T)) continue;
+        if (!Number.isFinite(T) || T > MAX_T) continue;
         const B = walked(bike, k) / v;
         const G = time[cells[k]];
         const M = (distM(lat, lon, pts[k + 1][0], pts[k + 1][1]) * DETOUR) / v;

@@ -1301,3 +1301,29 @@ Zonder fiets loop je nu 5 km/u, tot 2 km, over het **fietsraster** (6.7 stap 2).
   - **Raster.** Het raster wijkt zelf bij 10% meer dan 5 min af van fiets-OSRM. Bij fietsen was dat < 1%, maar bij lopen weegt dezelfde afwijking in meters 3,75× zwaarder in minuten.
 - **Besluit:** ruim boven de 3%, dus een looptraster bouwen. Een looptraster in het huidige formaat lost alleen de netwerkfout op. De rasterfout (±10%) blijft, tenzij het formaat voor lopen fijner wordt.
 - **Volgende stap (0b):** eerst in de vijf regio's een looptraster bouwen met `bike_grid_test.py --profile foot` en meten of het huidige formaat volstaat: 250 m, 16 richtingen, 4 bits, start in 3 × 3 cellen. Daarna eventueel een fijnere variant meten, bijv. 8 bits per kant of start in 5 × 5 cellen. Pas dan heel NL bouwen (stap 1).
+
+### Resultaten stap 0b: een looptraster in vijf proefregio's (11 nov 2026)
+
+- **Methode.** `pipeline/bike_grid_test.py <regio> 60 16 <R> --foot [--4bit]` bouwt het raster van de regio met de loopserver (16 richtingen) en vergelijkt het met OSRM-voet, bij 4 km/u. Nieuwe regio's: `denhaag`, `amsterdam`, `arnhem`. `pipeline/walk_pairs_summary.py` maakt de tabel.
+- **Alleen paren tot 30 min lopen** (2 km, de loopgrens). Verdere paren komen met die grens niet op de kaart, maar domineerden in stap 0 de uitschieters: barrières als kanalen en snelwegen. Zo is 1,6 km hemelsbreed vanaf Kanaleneiland 3,9 km lopen. `walk_check.ts --max=30` past hetzelfde filter toe op stap 0.
+
+| Hoe | Paren | > 5 min fout | > 2 min fout | p50 / p90 / p98 (min) |
+|---|---|---|---|---|
+| Nu: lopen over het fietsraster (`walk_check.ts --max=30`) | 14.550 | 16,3% | 55,7% | +2,0 / +6,0 / +11 |
+| Hemelsbreed × 1,3 | 27.246 | 9,3% | | |
+| Looptraster, 4 bits, start 3 × 3 (formaat van de fiets) | 27.246 | 4,1% | 32,5% | +1,2 / +3,8 / +5,9 |
+| Looptraster, 8 bits, start 3 × 3 | 27.246 | 4,2% | 33,7% | +1,3 / +3,8 / +6,0 |
+| Looptraster, 4 bits, start 5 × 5 | 27.246 | 1,2% | 17,1% | +0,4 / +2,7 / +4,5 |
+| **Looptraster, 4 bits, start 7 × 7** | 27.246 | **0,5%** | **8,7%** | **+0,0 / +1,8 / +3,5** |
+
+  Per regio is het beeld gelijk. Met start 7 × 7 ligt het tussen 0,1% (Amsterdam) en 1,1% (Zeeland) meer dan 5 min fout. De steekproeven van stap 0 en 0b verschillen (30 en 60 haltes), maar het verschil is veel groter dan dat.
+- **8 bits per kant helpt niet; een grotere startzone wel.** Bij lopen weegt het eerste stuk van halte naar straat zwaar, en dat volgt de startcel exact uit OSRM. Daarna stapelt de rasterfout zich minder op.
+- **Kosten van start 7 × 7:**
+  - 49 in plaats van 9 bytes per halteplek: ±1,7 MB ruw voor ±35k halteplekken (fiets nu 0,31 MB).
+  - In de browser `seedNode` (Int32) + `seedDist` (Float32): 35k × 49 × 8 B = ±14 MB, tegen 2,5 MB bij 3 × 3. Met `seedDist` als byte (× `seedStep`) is het ±8,5 MB.
+  - Rekentijd: de startcellen zijn een lus over halte × 49, dus verwaarloosbaar naast de Dijkstra.
+- **Bijvangst.** Een grotere startzone verbetert waarschijnlijk ook het fietsraster (raster − fiets-OSRM is bij lopen 6,6% meer dan 5 min fout). Bij 15 km/u telt dat minder; dat is nog niet gemeten.
+- **Bedrijfszaken:**
+  - Twee OSRM-servers tegelijk (±3,5 GB elk) plus de 8 threads van de rasterbouw lieten de WSL-VM (9 GB) herstarten. Bouw met één server tegelijk.
+  - `osrm-voet` crashte met SIGBUS toen de externe SSD haperde, en schreef een core dump van 3,8 GB op C:. Nu draaien de servers met `--ulimit core=0`, en de `.fileIndex` (0,5 GB, bij elke vraag gelezen via mmap) staat op de WSL-schijf.
+- **Volgende stap (1):** het looptraster voor heel NL bouwen met `build_bike_grid.py --profile foot` en start in 7 × 7 cellen (`SEED_R = 3`), en exporteren als `walk.bin.gz`.

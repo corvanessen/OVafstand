@@ -1,7 +1,8 @@
 """Fase 3, stap 3: hoe sla je echte fietstijden compact op? Proef in één regio.
 
 Gebruik:  python pipeline/bike_grid_test.py [regio] [aantal_haltes] [variant] [startstraal]
-          regio: zeeland, utrecht; variant: 8, 16, 16L; startstraal R: de halte start in (2R+1)² cellen
+          regio: zeeland, utrecht, denhaag, amsterdam, arnhem; variant: 8, 16, 16L; startstraal R: de halte start in (2R+1)² cellen
+          --foot: lopen in plaats van fietsen (loopserver :5001, 4 km/u, cellen binnen 2 km); lopen, stap 0b
 
 Vergelijkt twee opslagvormen met OSRM (eigen server, localhost:5000) als waarheid:
   A. tabellen per halte: fietstijd naar elke cel binnen 5 km, of alleen de correcties t.o.v. het model;
@@ -30,6 +31,10 @@ ROOT = Path(__file__).resolve().parent.parent
 REGIONS = {  # lat_min, lat_max, lon_min, lon_max
     "zeeland": (51.20, 51.75, 3.35, 4.30),
     "utrecht": (51.95, 52.25, 4.85, 5.35),
+    # voor lopen (stap 0b): ruim genoeg voor de marge in evaluate()
+    "denhaag": (52.00, 52.14, 4.20, 4.42),
+    "amsterdam": (52.30, 52.42, 4.80, 5.00),
+    "arnhem": (51.93, 52.07, 5.80, 6.10),
 }
 REGION = sys.argv[1] if len(sys.argv) > 1 else "zeeland"
 N_STOPS = int(sys.argv[2]) if len(sys.argv) > 2 else 60
@@ -38,11 +43,13 @@ SEED_R = int(sys.argv[4]) if len(sys.argv) > 4 else 0   # halte start in (2R+1)�
 PRUNE = "--prune" in sys.argv                            # overbodige kanten weglaten
 BITS4 = "--4bit" in sys.argv                             # 4 bits per kant in plaats van 8
 DATE = "20261110"
-OSRM = "http://localhost:5000/table/v1/bike/"
+FOOT = "--foot" in sys.argv                              # lopen: loopserver en looptempo
+OSRM = "http://localhost:5001/table/v1/foot/" if FOOT else "http://localhost:5000/table/v1/bike/"
+TAG = "_foot" if FOOT else ""                            # in de bestandsnamen, zodat fiets en lopen niet botsen
 OUT_DATA = ROOT / "data" / "bike_grid"
 OUT = ROOT / "output"
 
-KMH, DETOUR, BIKE_MAX = 15.0, 1.3, 5000.0
+KMH, DETOUR, BIKE_MAX = (4.0, 1.3, 2000.0 * 1.3) if FOOT else (15.0, 1.3, 5000.0)   # venster: BIKE_MAX / DETOUR hemelsbreed
 SNAP_MAX = 250.0     # m; cel verder van een fietsbare weg = geen knoop (water, weiland)
 BLOCK = 8            # cellen per blok per OSRM-verzoek
 Q_STEP = 1 / 32      # kwantisering van de omrijfactor per kant (uint8: 1 + q·Q_STEP, 255 = geen kant)
@@ -79,7 +86,7 @@ def table(lats, lons, sources=None, destinations=None):
         except Exception as err:
             print(f"  fout ({err}), poging {attempt + 1}")
             time.sleep(2)
-    raise RuntimeError("OSRM (localhost:5000) onbereikbaar; start met: bash pipeline/osrm_setup.sh start")
+    raise RuntimeError(f"OSRM ({OSRM}) onbereikbaar; start met: bash pipeline/osrm_setup.sh {'voet-start' if FOOT else 'start'}")
 
 
 # --- regio in rastercellen ---
@@ -102,7 +109,7 @@ M_J = max(dj for _, dj in DIRS)
 
 def build_edges():
     """B: per cel de wegafstand naar 4 buren, per blok één OSRM-tabel"""
-    f = OUT_DATA / f"{REGION}_edges{'' if VARIANT == '8' else VARIANT}.npz"
+    f = OUT_DATA / f"{REGION}_edges{'' if VARIANT == '8' else VARIANT}{TAG}.npz"
     if f.exists():
         z = np.load(f)
         return z["snap"], z["road"]
@@ -290,7 +297,7 @@ def evaluate(graph, node):
     S, C = np.concatenate(pair_stop), np.concatenate(pair_cell)
     ok = np.isfinite(T)
     # per paar bewaren, voor nader onderzoek van de uitschieters
-    np.savez_compressed(OUT_DATA / f"{REGION}_{VARIANT}_s{SEED_R}_pairs.npz", stop=S[ok], cell=C[ok], T=T[ok], G=G[ok], M=M[ok])
+    np.savez_compressed(OUT_DATA / f"{REGION}_{VARIANT}_s{SEED_R}{'_4b' if BITS4 else ''}{TAG}_pairs.npz", stop=S[ok], cell=C[ok], T=T[ok], G=G[ok], M=M[ok])
     T, G, M = T[ok], G[ok], M[ok]
     return T, G, M, np.mean(cnt_cells), len(t_true)
 
@@ -323,7 +330,7 @@ def main():
     graph = grid_graph(q, node)
     T, G, M, ncell, nstop = evaluate(graph, node)
     q_ = lambda s: np.round(np.quantile(s, [0.02, 0.1, 0.5, 0.9, 0.98]), 1).tolist()
-    print(f"\nproef: {nstop} haltes, gemiddeld {ncell:.0f} cellen binnen 5 km, {len(T)} paren")
+    print(f"\nproef: {nstop} haltes, gemiddeld {ncell:.0f} cellen binnen {BIKE_MAX / DETOUR / 1000:.0f} km, {len(T)} paren")
     print("fout in minuten (schatting − OSRM), percentielen 2/10/50/90/98:")
     print(f"  model hemelsbreed × 1,3 : {q_(M - T)}   |fout| > 5 min: {(abs(M - T) > 5).mean():.1%}")
     print(f"  B. fietsraster          : {q_(G - T)}   |fout| > 5 min: {(abs(G - T) > 5).mean():.1%}")
@@ -355,7 +362,7 @@ def main():
     ax.set_xlabel("schatting − OSRM (min)")
     ax.legend()
     fig.tight_layout()
-    name = f"bike_grid_{REGION}_{VARIANT}.png"
+    name = f"bike_grid_{REGION}_{VARIANT}{TAG}.png"
     fig.savefig(OUT / name, dpi=110)
     print(f"\nfiguur: {OUT / name}")
 
