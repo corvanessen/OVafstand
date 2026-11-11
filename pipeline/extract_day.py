@@ -15,10 +15,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from days import BASE
 
 ROOT = Path(__file__).resolve().parent.parent
 GTFS = ROOT / "data" / "raw" / "gtfs-nl.zip"
-DATE = sys.argv[1] if len(sys.argv) > 1 else "20261110"  # dinsdag, buiten schoolvakanties
+DATE = sys.argv[1] if len(sys.argv) > 1 else BASE
 OUT = ROOT / "data" / f"day_{DATE}"
 
 

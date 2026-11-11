@@ -1356,4 +1356,20 @@ Zonder fiets loop je nu 5 km/u, tot 2 km, over het **fietsraster** (6.7 stap 2).
   - Rekentijd route + raster bij lopen bij aankomst: Utrecht C 334 ms, Venlo 194 ms, Aken 58 ms.
 - **Geheugen** (`mem_check.ts`). Het looptraster kost 41,5 MB, het fietsraster 30,7 MB. Het verschil zit in de startcellen: `seedNode` en `seedDist` zijn 6,5 MB elk. Met `seedDist` als byte (× `seedStep`, zoals in het bestand) scheelt dat ±5 MB.
 - **Gevonden tijdens het testen: HTM ontbreekt.** De feed van 10 okt bevat de dienstregeling van HTM maar tot 8 nov, terwijl de feed tot 12 dec loopt. Op alle drie de gekozen dagen (10, 14 en 15 nov) rijdt in Den Haag dus geen tram of bus van HTM: ±4.000 ritten per werkdag. Scheveningen heeft daardoor geen halte binnen 3,9 km. Ook De Lijn stopt na 14 nov, dus op zondag 15 nov rijdt daar niets. Dit staat los van lopen, en zat er al vanaf fase 0 in.
-- **Volgende stap:** een nieuwe feed met HTM, en daarbij per vervoerder controleren dat de gekozen dag erin zit. Daarna eventueel `seedDist` als byte.
+- ~~**Volgende stap:** een nieuwe feed met HTM, en daarbij per vervoerder controleren dat de gekozen dag erin zit.~~ Klaar, zie hieronder.
+
+### Nieuwe feed: HTM terug (11 nov 2026)
+
+- **Feed** van 11 nov 2026 (versie 9680, looptijd 11 nov – 12 dec, 166 MB; de oude staat als `data/raw/gtfs-nl_20261010.zip`).
+- **`pipeline/feed_days.py`** telt de ritten per vervoerder per dag, met de eerste en laatste dag. Alle grote vervoerders rijden op dinsdag 17, zaterdag 21 en zondag 22 nov (week 47, geen schoolvakantie). Alleen kleine diensten ontbreken op sommige dagen: nachttreinen, pendels. Op dinsdag 24 nov rijdt NS minder (4.383 tegen 4.675 ritten).
+- **De dagen staan nu op één plek:** `pipeline/days.py` (`BASE`, `DAYS`). Eerst stond "20261110" als standaard in negen scripts.
+- **HTM rijdt weer:** 3.972 ritten op de werkdag. Vanaf Scheveningen (lopen bij vertrek, tot 5 km) bereik je 20.056 haltes binnen 3 uur; met de oude feed geen enkele.
+- **De Lijn is veel kleiner** in deze feed: 878 ritten per werkdag tegen 2.676. De haltes diep in Vlaanderen (Genk, Hasselt, Antwerpen, Turnhout) zijn weg. Daardoor zijn er 29.278 halteplekken, tegen 34.723. In Nederland zijn 112 haltenamen verdwenen en 902 nieuw, wat normaal is bij een nieuwe dienstregeling.
+- **Startcellen opnieuw**, want de volgorde van de halteplekken is anders. De rijen van beide rasters zijn hergebruikt. Lopen: 17,5 min, 155 halteplekken zonder startcel (was 442), `walk.bin.gz` 5,30 MB. Fiets: 86 zonder startcel, `bike.bin.gz` 4,22 MB.
+- **Nieuwe controlegetallen** (vanaf Utrecht C):
+  - model A naar Groningen: 112 min (was 111); Amsterdam C 27 en Rotterdam C 37 blijven gelijk;
+  - haltes binnen 3 uur, standaard of met fiets aan beide kanten: 27.402 (was 28.960); met lopen bij vertrek 27.175;
+  - om 08:00: uurmodel 27.004, echte vertrektijden 25.585 (was 28.493 en 26.355).
+
+  `check.ts` gebruikt de nieuwe getallen. De referentie van `bikegrid_check.ts` is opnieuw geschreven.
+- **Volgende stap:** eventueel `seedDist` als byte (±5 MB minder). De Lijn volgen: komt die terug in een latere feed, dan de data opnieuw verversen. `og.png` kan opnieuw (`node web/scripts/og.mjs`).

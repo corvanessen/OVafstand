@@ -11,7 +11,7 @@ De dag: calendar.txt plus calendar_dates.txt. Ligt DATE buiten de geldigheid van
 dinsdag die er het dichtst bij ligt (zo zijn ook oudere kopieën te tellen).
 
 Gebruik:  python pipeline/border_survey.py <gtfs.zip> [YYYYMMDD]
-De NL-kant komt uit data/day_20261110/ (extract_day.py).
+De NL-kant komt uit data/day_<BASE>/ (extract_day.py, zie days.py).
 """
 import datetime as dt
 import sys
@@ -23,11 +23,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
+from days import BASE
 
 ROOT = Path(__file__).resolve().parent.parent
 ZIP = Path(sys.argv[1])
-DATE = sys.argv[2] if len(sys.argv) > 2 else "20261110"
-NL = ROOT / "data" / "day_20261110"
+DATE = sys.argv[2] if len(sys.argv) > 2 else BASE
+NL = ROOT / "data" / f"day_{BASE}"
 
 BOX = (3.2, 7.4, 50.6, 53.7)   # lon_min, lon_max, lat_min, lat_max (rasterbox van het fietsraster)
 MATCH_M = 150

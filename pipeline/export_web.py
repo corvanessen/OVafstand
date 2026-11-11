@@ -46,9 +46,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from days import BASE
 
 ROOT = Path(__file__).resolve().parent.parent
-DATE = sys.argv[1] if len(sys.argv) > 1 else "20261110"
+DATE = sys.argv[1] if len(sys.argv) > 1 else BASE
 D = ROOT / "data" / f"day_{DATE}"
 OUT = ROOT / "web" / "public" / "data"
 

@@ -142,24 +142,28 @@ Na een klik staat de nieuwe heatmap er binnen een paar honderd milliseconden. De
 
 ```bash
 curl -o data/raw/gtfs-nl.zip http://gtfs.ovapi.nl/nl/gtfs-nl.zip
-python pipeline/extract_day.py 20261110     # werkdag
-python pipeline/extract_day.py 20261114     # zaterdag
-python pipeline/extract_day.py 20261115     # zondag
-python pipeline/build_graph.py 20261110 20261114 20261115
-python pipeline/export_web.py 20261110
+python pipeline/feed_days.py 20261117 20261118 20261121 20261122   # ritten per vervoerder per dag
+python pipeline/extract_day.py 20261117     # werkdag
+python pipeline/extract_day.py 20261121     # zaterdag
+python pipeline/extract_day.py 20261122     # zondag
+python pipeline/build_graph.py              # de dagen uit pipeline/days.py
+python pipeline/export_web.py
 ```
 
-Kies een dinsdag of woensdag buiten de schoolvakanties, binnen de looptijd van de feed (zie `feed_info.txt`), en de zaterdag en zondag daarna. De eerste datum is de basis. `build_graph.py` maakt één graaf voor alle dagen: de halteplekken en lijnen van de werkdag eerst, die van het weekend erachter. `export_web.py` schrijft `graph.bin` en `hours.bin.gz` voor de werkdag, en per weekenddag `day_<datum>.bin.gz` (cost en kind per kant, ±0,2 MB) en `hours_<datum>.bin.gz`. Voor elke dag komt er ook `conn_<datum>.bin.gz` (de dienstregeling per rit). Met één datum krijg je alleen de werkdag, zoals vroeger.
+Kies een dinsdag of woensdag buiten de schoolvakanties, binnen de looptijd van de feed (zie `feed_info.txt`), en de zaterdag en zondag daarna. Controleer met `feed_days.py` dat elke vervoerder op die dagen rijdt: een vervoerder kan eerder stoppen dan de feed (in de feed van 10 okt 2026 stopte HTM op 8 nov). Zet de dagen daarna in `pipeline/days.py`; alle scripts nemen ze daar als standaard. De eerste datum is de basis. `build_graph.py` maakt één graaf voor alle dagen: de halteplekken en lijnen van de werkdag eerst, die van het weekend erachter. `export_web.py` schrijft `graph.bin` en `hours.bin.gz` voor de werkdag, en per weekenddag `day_<datum>.bin.gz` (cost en kind per kant, ±0,2 MB) en `hours_<datum>.bin.gz`. Voor elke dag komt er ook `conn_<datum>.bin.gz` (de dienstregeling per rit). Met één datum krijg je alleen de werkdag, zoals vroeger.
 
 Het fietsraster hangt ook af van de halteplekken. Na een nieuwe GTFS-dag dus ook:
 
 ```bash
 bash pipeline/osrm_setup.sh grens      # in Ubuntu (WSL); eenmalig (±30 min), of "start" om alleen de server te starten
-python pipeline/build_bike_grid.py 20261110
+python pipeline/build_bike_grid.py
 python pipeline/export_bike_grid.py
+# en het looptraster, met de loopserver (osrm_setup.sh voet-start; de fietsserver eerst stoppen)
+python pipeline/build_bike_grid.py --profile foot
+python pipeline/export_bike_grid.py --profile foot
 ```
 
-De rijen van het raster staan in `data/bike_grid/grens/` en worden hergebruikt. Daarna zijn alleen de startcellen per halteplek opnieuw nodig (±8 min). Voor nieuwe OSM-data verwijder je `data/bike_grid/grens/`; het hele raster kost dan ±2,5 uur. Loopt OSRM vast (time-outs), dan herstart het script de container zelf.
+De rijen van het raster staan in `data/bike_grid/grens/` en worden hergebruikt. Daarna zijn alleen de startcellen per halteplek opnieuw nodig (fiets ±8 min, lopen ±20 min). Voor nieuwe OSM-data verwijder je `data/bike_grid/grens/`; het hele raster kost dan ±2,5 uur. Loopt OSRM vast (time-outs), dan herstart het script de container zelf.
 
 ## Website
 

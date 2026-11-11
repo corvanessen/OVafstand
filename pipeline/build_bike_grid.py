@@ -27,13 +27,14 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
+from days import BASE
 
 ROOT = Path(__file__).resolve().parent.parent
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 FOOT = "--profile" in sys.argv and sys.argv[sys.argv.index("--profile") + 1] == "foot"
 if FOOT:
     ARGS.remove("foot")
-DATE = ARGS[0] if ARGS else "20261110"
+DATE = ARGS[0] if ARGS else BASE
 OSRM = "http://localhost:5001/table/v1/foot/" if FOOT else "http://localhost:5000/table/v1/bike/"
 CONTAINER = "osrm-voet" if FOOT else "osrm-fiets"   # zie osrm_setup.sh
 OUT = ROOT / "data" / ("walk_grid" if FOOT else "bike_grid")

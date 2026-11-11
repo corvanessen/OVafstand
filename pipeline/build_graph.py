@@ -19,7 +19,7 @@ vereniging van alle dagen. Halteplekken, lijnknopen en rijkanten van de basisdag
 erachter. Per dag zijn er eigen intervallen, rijtijden, een uurmodel en een soort per rijkant:
 0 = in het venster, 2 = alleen buiten het venster, 3 = rijdt die dag niet.
 
-Gebruik:  python pipeline/build_graph.py [YYYYMMDD ...]     bijv. 20261110 20261114 20261115
+Gebruik:  python pipeline/build_graph.py [YYYYMMDD ...]     standaard de dagen uit days.py
 Schrijft data/day_<eerste datum>/graph.npz
 """
 import sys
@@ -28,9 +28,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
+from days import DAYS
 
 ROOT = Path(__file__).resolve().parent.parent
-DATES = sys.argv[1:] or ["20261110"]
+DATES = sys.argv[1:] or DAYS
 D = ROOT / "data" / f"day_{DATES[0]}"
 
 WINDOW = (7 * 3600, 19 * 3600)   # tijdvenster voor rijtijden en intervallen (het dagmodel)

@@ -57,7 +57,8 @@ async function main() {
   const dA = search(g, straightAccess(g, UTRECHT.lat, UTRECHT.lon, a), a).dist;
   expect("model A Utrecht C → Amsterdam Centraal", min(dA, "Amsterdam Centraal"), 27);
   expect("model A Utrecht C → Rotterdam Centraal", min(dA, "Rotterdam Centraal"), 37);
-  expect("model A Utrecht C → Groningen", min(dA, "Groningen"), 111);
+  // de verwachte getallen horen bij de dagen in pipeline/days.py (feed van 11 nov 2026: Groningen 112, was 111)
+  expect("model A Utrecht C → Groningen", min(dA, "Groningen"), 112);
 
   // lopen: tempo en grens komen uit de instellingen (standaard 4 km/u, tot 2 km)
   const kmh = (v: number) => Math.round(v * 3.6 * 1000) / 1000;
@@ -91,7 +92,7 @@ async function main() {
     for (let i = 0; i < g.nArea; i++) if (d[i] < p.tMaxMin * 60) n++;
     return n;
   };
-  expect("haltes binnen 3 uur, fiets bij aankomst", reached({ ...DEFAULTS, bikeEnd: true }), 28960);
+  expect("haltes binnen 3 uur, fiets bij aankomst", reached({ ...DEFAULTS, bikeEnd: true }), 27402); // feed 10 okt: 28960, met veel meer De Lijn
 
   // twee rasters (fiets en lopen) hebben elk hun eigen knoopnummers. Een "looptraster" dat precies het
   // fietsraster is, maar met omgekeerde nummers, moet dus cel voor cel dezelfde kaart geven als geen looptraster.

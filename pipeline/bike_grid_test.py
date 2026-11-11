@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra
+from days import BASE
 
 ROOT = Path(__file__).resolve().parent.parent
 REGIONS = {  # lat_min, lat_max, lon_min, lon_max
@@ -42,7 +43,7 @@ VARIANT = sys.argv[3] if len(sys.argv) > 3 else "8"
 SEED_R = int(sys.argv[4]) if len(sys.argv) > 4 else 0   # halte start in (2R+1)² cellen rondom
 PRUNE = "--prune" in sys.argv                            # overbodige kanten weglaten
 BITS4 = "--4bit" in sys.argv                             # 4 bits per kant in plaats van 8
-DATE = "20261110"
+DATE = BASE
 FOOT = "--foot" in sys.argv                              # lopen: loopserver en looptempo
 OSRM = "http://localhost:5001/table/v1/foot/" if FOOT else "http://localhost:5000/table/v1/bike/"
 TAG = "_foot" if FOOT else ""                            # in de bestandsnamen, zodat fiets en lopen niet botsen

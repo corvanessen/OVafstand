@@ -27,13 +27,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
+from days import BASE
 
 ROOT = Path(__file__).resolve().parent.parent
 OFFLINE = "--offline" in sys.argv  # alleen de cache gebruiken, niets ophalen
 LOCAL = "--local" in sys.argv      # eigen server uit osrm_setup.sh in plaats van de publieke
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 N_STOPS = int(ARGS[0]) if len(ARGS) > 0 else 300
-DATE = ARGS[1] if len(ARGS) > 1 else "20261110"
+DATE = ARGS[1] if len(ARGS) > 1 else BASE
 CACHE = ROOT / "data" / "bike_check" / ("osrm_local" if LOCAL else "osrm")
 OUT = ROOT / "output"
 SUFFIX = "_local" if LOCAL else ""
