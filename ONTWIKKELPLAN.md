@@ -1267,3 +1267,37 @@ Bekeken (broncode en schermafbeeldingen, desktop en telefoon): **OVLive** (ovliv
 - Kleur: viridis houden, maar boven 2 uur lichter of minder verzadigd, zodat verre gebieden minder zwaar ogen.
 - Een eigen domein en links van andere sites (eigenaar).
 - Later, als eigen fase: overlap van 3–4 punten (geheugen: 13,5 MB per run) en een Engelse versie.
+
+## Lopen over voetpaden (plan van 11 nov 2026, branch `lopen`)
+
+Zonder fiets loop je nu 5 km/u, tot 2 km, over het **fietsraster** (6.7 stap 2). Voetpaden waar je niet mag fietsen ontbreken dus, en grens en tempo liggen vast. Plan:
+- **Stap 0:** meten hoeveel dat scheelt met echt lopen. Beslisregel: wijkt het fietsraster bij < 3% van de paren meer dan 5 min af, dan alleen de bediening aanpassen.
+- **Stap 1:** een looptraster in hetzelfde formaat (`walk.bin.gz`), met OSRM `foot.lua` op het grensextract. `build_bike_grid.py`/`export_bike_grid.py` krijgen `--profile bike|foot`.
+- **Stap 2:** de browser met twee rasters, één per stuk. Let op: `rasterizeBike` mengt de tijden nu per knoop. Met twee rasters moet dat per cel, want de knoopnummers verschillen.
+- **Stap 3:** de bediening. Schuiven "Lopen, max" (0,5–8 km, standaard 2) en "Looptempo" (3–6 km/u, standaard **4**: stevig doorwandelen, keuze van Cor; was 5). Deellink `&l=`, `&lt=`. Fieldset "Fiets en lopen". In de voetregel "over voetpaden en wegen".
+
+### Resultaten stap 0: lopen over het fietsraster vs echt lopen (11 nov 2026)
+
+- **Loopserver.** `osrm_setup.sh voet` bouwt OSRM met `foot.lua` op `grens.osm.pbf`. Het resultaat is container `osrm-voet` op `localhost:5001`, naast de fietsserver op :5000.
+  - C: liep vol (de WSL-schijf groeide tot 19,9 GB). Daarom kan de uitvoer met `OSRM_VOET_DIR=/mnt/d/osrm` naar de externe SSD; de invoer komt als los bestand uit `~/osrm` in de container.
+  - Het extract kostte ±25 min en `partition` + `customize` ±8 min, met een piek van 4,8 GB RAM.
+  - Beide servers draaien alleen zolang WSL wakker blijft (`sleep 7200`).
+- **Meting** (`web/bench/walk_check.ts`, `--voorbeelden` toont de grootste verschillen):
+  - 5 regio's, 30 vaste haltes per regio, alle cellen binnen 2 km hemelsbreed. Telt alleen cellen met een voetpad binnen 250 m.
+  - Waarheid: OSRM-voet, inclusief de snapafstanden. Raster: `rasterizeBike` met die ene halte als bron, zoals de kaart het nu doet. Alles bij 4 km/u, dus 5 min = 333 m.
+
+| Regio | Paren | Raster > 5 min | Raster > 2 min | Hemelsbreed × 1,3 > 5 min | Fiets-OSRM > 5 min | Raster − fiets-OSRM > 5 min | Niet bereikt | Raster − voet p50 / p90 / p98 (min) |
+|---|---|---|---|---|---|---|---|---|
+| Utrecht | 5.618 | 36,0% | 66,3% | 35,4% | 32,0% | 12,7% | 4,8% | +1,3 / +6,2 / +13,0 |
+| Zeeland | 5.314 | 16,5% | 42,7% | 33,1% | 9,4% | 9,3% | 2,7% | +1,1 / +5,2 / +8,2 |
+| Den Haag | 5.972 | 31,7% | 74,6% | 23,0% | 18,0% | 10,6% | 0,1% | +2,8 / +6,5 / +9,2 |
+| Amsterdam | 6.110 | 22,7% | 66,9% | 6,8% | 8,7% | 9,0% | 0,2% | +2,9 / +6,5 / +9,2 |
+| Arnhem/Veluwezoom | 5.815 | 39,0% | 70,2% | 37,5% | 35,1% | 10,3% | 3,3% | +1,1 / +5,7 / +10,0 |
+| **Totaal** | 28.829 | **29,3%** | 64,6% | 26,8% | 20,6% | 10,4% | 2,2% | |
+
+- **Lopen over het fietsraster is niet beter dan hemelsbreed × 1,3** (29% tegen 27% meer dan 5 min fout). Het raster is vrijwel altijd te lang (p50 +1 tot +3 min).
+- **Twee foutbronnen, ongeveer even groot:**
+  - **Netwerk.** Fiets-OSRM wijkt bij 21% van de paren meer dan 5 min af van voet-OSRM: in bos en op landgoederen (Lage Vuursche, Zeist, Veluwezoom), in winkelstraten zonder fiets (Leidsestraat en Kalverstraat in Amsterdam) en bij voetpaden tussen wijken (Velp: 1,5 km lopend, 3,2 km fietsend).
+  - **Raster.** Het raster wijkt zelf bij 10% meer dan 5 min af van fiets-OSRM. Bij fietsen was dat < 1%, maar bij lopen weegt dezelfde afwijking in meters 3,75× zwaarder in minuten.
+- **Besluit:** ruim boven de 3%, dus een looptraster bouwen. Een looptraster in het huidige formaat lost alleen de netwerkfout op. De rasterfout (±10%) blijft, tenzij het formaat voor lopen fijner wordt.
+- **Volgende stap (0b):** eerst in de vijf regio's een looptraster bouwen met `bike_grid_test.py --profile foot` en meten of het huidige formaat volstaat: 250 m, 16 richtingen, 4 bits, start in 3 × 3 cellen. Daarna eventueel een fijnere variant meten, bijv. 8 bits per kant of start in 5 × 5 cellen. Pas dan heel NL bouwen (stap 1).
