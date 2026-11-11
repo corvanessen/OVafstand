@@ -3,7 +3,7 @@
 //   cd web && npx rolldown bench/bikegrid_check.ts --platform node -o ../data/bikegrid_check.mjs && node ../data/bikegrid_check.mjs [--ref]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadBikeGrid, originAccess, rasterizeBike } from "../src/bikegrid";
+import { loadBikeGrid, loadWalkGrid, originAccess, rasterizeBike } from "../src/bikegrid";
 import { NX, NY } from "../src/grid";
 import { applyDay, loadGraph, search, type Params } from "../src/router";
 import { DEFAULTS } from "../src/state";
@@ -31,10 +31,15 @@ async function main() {
   const g = await loadGraph(WEB);
   applyDay(g, "wd");
   let t = performance.now();
-  const bg = (await loadBikeGrid(WEB, g))!;
+  const bg = { bike: (await loadBikeGrid(WEB, g))!, walk: await loadWalkGrid(WEB, g) };
+  console.log(bg.walk ? "met looptraster" : "zonder looptraster (lopen over het fietsraster)");
   const msLoad = performance.now() - t;
-  const bytes = Object.values(bg).reduce((s, v) => s + (ArrayBuffer.isView(v) ? v.byteLength : 0), 0);
-  console.log(`fietsraster: ${bg.nNode.toLocaleString("nl")} knopen, ${(bytes / 2 ** 20).toFixed(1)} MB, laden ${msLoad.toFixed(0)} ms`);
+  console.log(`laden ${msLoad.toFixed(0)} ms`);
+  for (const [name, grid] of [["fietsraster", bg.bike], ["looptraster", bg.walk]] as const) {
+    if (!grid) continue;
+    const bytes = Object.values(grid).reduce((s, v) => s + (ArrayBuffer.isView(v) ? v.byteLength : 0), 0);
+    console.log(`${name}: ${grid.nNode.toLocaleString("nl")} knopen, ${(bytes / 2 ** 20).toFixed(1)} MB`);
+  }
 
   const writeRef = process.argv.includes("--ref") || !existsSync(REF);
   const N = NX * NY;

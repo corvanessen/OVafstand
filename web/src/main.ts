@@ -9,7 +9,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import { checkProfile, initChart, onProfile, pumpProfile } from "./chart";
 import { dayDates, initControls, setBikeAvailable, syncControls, syncTime } from "./controls";
 import { explainHtml, hoverHtml, type ExplainCtx, type ExplainMsg } from "./explain";
-import { fmtDate } from "./format";
+import { fmtDate, footNote } from "./format";
 import { CORNERS, cellOf } from "./grid";
 import { readHash, writeHash } from "./hash";
 import { renderLegend } from "./legend";
@@ -313,9 +313,7 @@ function showResult(m: ResultMsg, fade: boolean) {
   $("status").textContent = reached + " · " +
     `netwerk ${m.msRoute.toFixed(0)} ms · kaart ${m.msRaster.toFixed(0)} ms` +
     (params.realBike && !state.bikeLoaded ? " · fietsraster laden…" : "");
-  const legNote = params.bikeStart === params.bikeEnd ? (params.bikeStart ? "fiets heen en terug" : "lopen van en naar de halte")
-    : params.bikeStart ? "fiets bij vertrek, lopen bij aankomst" : "lopen bij vertrek, fiets bij aankomst";
-  $("bikeNote").textContent = legNote + " · " + (m.bike ? "over de weg (OpenStreetMap)" : "afstand hemelsbreed × 1,3");
+  $("bikeNote").textContent = footNote(params.bikeStart, params.bikeEnd, !m.bike ? "straight" : m.walk ? "walk" : "road");
   hasResult = true;
   // het beeld is anders: het label en de vastgezette reisinfo opnieuw laten uitrekenen
   hoverSent = null;
@@ -353,6 +351,11 @@ worker.onmessage = (ev: MessageEvent<Response>) => {
     state.bikeLoaded = m.ok;
     setBikeAvailable(m.ok);
     if (m.ok && params.realBike) scheduleCompute();
+    checkProfile();
+  } else if (m.type === "walkReady") {
+    state.walkLoaded = m.ok;
+    // alleen opnieuw rekenen als er ergens gelopen wordt
+    if (m.ok && params.realBike && !(params.bikeStart && params.bikeEnd)) scheduleCompute();
     checkProfile();
   } else if (m.type === "result") {
     const req = requests.get(m.id);

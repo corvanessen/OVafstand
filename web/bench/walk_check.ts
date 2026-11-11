@@ -103,7 +103,7 @@ async function main() {
       // raster: alleen deze halte als bron, op tijd 0
       const dist = new Float64Array(g.nArea).fill(Infinity);
       dist[a] = 0;
-      const time = rasterizeBike(bg, g, { dist } as unknown as Search, null, P).time;
+      const time = rasterizeBike({ bike: bg, walk: null }, g, { dist } as unknown as Search, null, P).time;
 
       const oi = Math.floor((mercX(lon) - X0) / CELL), oj = Math.floor((mercY(lat) - Y0) / CELL);
       const R = Math.ceil((RADIUS_M * 1.8) / CELL);

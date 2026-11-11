@@ -25,7 +25,7 @@ export function initChart(d: typeof deps) {
 /** na elke wijziging: opnieuw beginnen als het vertrekpunt of het fietsen anders is */
 export function checkProfile() {
   const key = JSON.stringify([points(), params.day, params.bikeKmh, params.bikeMaxKm, params.directMaxKm,
-    params.bikeStart, params.bikeEnd, params.walkKmh, params.walkMaxKm, params.realBike && state.bikeLoaded]);
+    params.bikeStart, params.bikeEnd, params.walkKmh, params.walkMaxKm, params.realBike && state.bikeLoaded, state.walkLoaded]);
   if (key !== profileKey) {
     profileKey = key;
     profileGen++;

@@ -2,7 +2,7 @@
 //   cd web && npx rolldown bench/coverage.ts --platform node -o ../data/coverage.mjs && node ../data/coverage.mjs
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadBikeGrid, originAccess, rasterizeBike } from "../src/bikegrid";
+import { loadBikeGrid, loadWalkGrid, originAccess, rasterizeBike } from "../src/bikegrid";
 import { csaSearch, footpaths, loadTimetable } from "../src/csa";
 import { applyDay, loadDay, loadGraph, search, type Params } from "../src/router";
 import { DEFAULTS } from "../src/state";
@@ -23,7 +23,8 @@ async function main() {
   const g = await loadGraph(WEB);
   await loadDay(WEB, g, "wd", true);
   applyDay(g, "wd");
-  const bg = (await loadBikeGrid(WEB, g))!;
+  const bg = { bike: (await loadBikeGrid(WEB, g))!, walk: await loadWalkGrid(WEB, g) };
+  console.log(bg.walk ? "met looptraster" : "zonder looptraster (lopen over het fietsraster)");
   const tt = (await loadTimetable(WEB, g.days[0].conn!))!;
   const fp = footpaths(g);
   const [lat, lon] = [52.0894, 5.11];

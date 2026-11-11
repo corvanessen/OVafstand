@@ -4,10 +4,10 @@
 // de verwachte waarden verschuiven: dan eerst nagaan waarom, en ze hier bijwerken.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadBikeGrid, originAccess } from "../src/bikegrid";
+import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "../src/bikegrid";
 import { csaPath, csaSearch, footpaths, loadTimetable } from "../src/csa";
 import { diffText, explainHtml, hoverHtml, type ExplainCtx } from "../src/explain";
-import { clockSec, fmtMin, inRange } from "../src/format";
+import { clockSec, fmtMin, footNote, inRange } from "../src/format";
 import { applyDay, legs, loadDay, loadGraph, search, straightAccess, type Params } from "../src/router";
 import { DEFAULTS } from "../src/state";
 
@@ -27,6 +27,22 @@ function expect(what: string, got: unknown, want: unknown) {
   const ok = got === want;
   if (!ok) failed++;
   console.log(`${ok ? "ok  " : "FOUT"} ${what}: ${got}${ok ? "" : ` (verwacht ${want})`}`);
+}
+
+/** hetzelfde raster met omgekeerde knoopnummers (alleen voor de test hierboven) */
+function renumber(bg: BikeGrid): BikeGrid {
+  const N = bg.nNode;
+  const inv = (n: number) => (n < 0 ? n : N - 1 - n);
+  const first = new Uint32Array(N + 1);
+  const edge = new Uint8Array(bg.edge.length);
+  for (let u = 0, k = 0; u < N; u++) {
+    const o = N - 1 - u;
+    edge.set(bg.edge.subarray(bg.first[o], bg.first[o + 1]), k);
+    k += bg.first[o + 1] - bg.first[o];
+    first[u + 1] = k;
+  }
+  return { ...bg, nodeOfCell: bg.nodeOfCell.map(inv), cellOfNode: bg.cellOfNode.slice().reverse(),
+    snapM: bg.snapM.slice().reverse(), first, edge, seedNode: bg.seedNode.map(inv) };
 }
 
 async function main() {
@@ -50,6 +66,14 @@ async function main() {
   expect("lopen bij aankomst volgt walkKmh", kmh(legs({ ...DEFAULTS, walkKmh: 5.5 }).endV), 5.5);
   expect("lopen bij aankomst volgt walkMaxKm", legs({ ...DEFAULTS, walkMaxKm: 3.5 }).endMax, 3500);
 
+  // voetregel: welk stuk fietsen of lopen is, en waarover; voetpaden alleen als er gelopen wordt over het looptraster
+  expect("voetregel standaard, met looptraster", footNote(true, false, "walk"),
+    "fiets bij vertrek, lopen bij aankomst · over de weg en voetpaden (OpenStreetMap)");
+  expect("voetregel standaard, zonder looptraster", footNote(true, false, "road"),
+    "fiets bij vertrek, lopen bij aankomst · over de weg (OpenStreetMap)");
+  expect("voetregel fiets heen en terug: geen voetpaden", footNote(true, true, "walk"), "fiets heen en terug · over de weg (OpenStreetMap)");
+  expect("voetregel hemelsbreed", footNote(false, false, "straight"), "lopen van en naar de halte · afstand hemelsbreed × 1,3");
+
   // deellink: een getal telt alleen binnen het bereik en op de stap van de schuif (allowlist, hash.ts)
   const walkSlider = [0.5, 8, 0.5] as const; // min, max, stap van "Lopen, max"
   expect("deellink: l=3 geldig", inRange(3, ...walkSlider), true);
@@ -62,12 +86,28 @@ async function main() {
   const bike = await loadBikeGrid(WEB, g);
   expect("fietsraster geladen", bike !== null, true);
   const reached = (p: Params) => {
-    const d = search(g, originAccess(bike!, g, UTRECHT.lat, UTRECHT.lon, p), p).dist;
+    const d = search(g, originAccess({ bike: bike!, walk: null }, g, UTRECHT.lat, UTRECHT.lon, p), p).dist;
     let n = 0;
     for (let i = 0; i < g.nArea; i++) if (d[i] < p.tMaxMin * 60) n++;
     return n;
   };
   expect("haltes binnen 3 uur, fiets bij aankomst", reached({ ...DEFAULTS, bikeEnd: true }), 28960);
+
+  // twee rasters (fiets en lopen) hebben elk hun eigen knoopnummers. Een "looptraster" dat precies het
+  // fietsraster is, maar met omgekeerde nummers, moet dus cel voor cel dezelfde kaart geven als geen looptraster.
+  const cellTimes = (walk: BikeGrid | null, p: Params) => {
+    const grids = { bike: bike!, walk };
+    const s = search(g, originAccess(grids, g, UTRECHT.lat, UTRECHT.lon, p), p);
+    return rasterizeBike(grids, g, s, UTRECHT, p).time.slice();
+  };
+  const flipped = renumber(bike!);
+  for (const [what, p] of [["fiets bij vertrek, lopen bij aankomst", DEFAULTS], ["lopen bij vertrek", { ...DEFAULTS, bikeStart: false }],
+    ["fiets aan beide kanten", { ...DEFAULTS, bikeEnd: true }]] as [string, Params][]) {
+    const a = cellTimes(null, p), b = cellTimes(flipped, p);
+    let nDiff = 0;
+    for (let c = 0; c < a.length; c++) if (a[c] !== b[c]) nDiff++;
+    expect(`twee rasters, ${what}: cellen anders`, nDiff, 0);
+  }
 
   // echte vertrektijden: een route naar Groningen met kloktijden
   const p = { ...DEFAULTS, realBike: false, departMin: 480, timetable: true };

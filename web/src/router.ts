@@ -69,7 +69,7 @@ export interface Params {
 export const DETOUR = 1.3; // hemelsbreed -> over de weg
 
 /** snelheid (m/s) en grens (m) van het eerste stuk (vanaf het vertrekpunt) en het laatste (vanaf de halte):
- *  fietsen, of lopen als die fiets er niet is. Lopen gaat over hetzelfde fietsraster, met een andere snelheid. */
+ *  fietsen, of lopen als die fiets er niet is. Lopen gaat over het looptraster als dat er is (bikegrid.ts). */
 export function legs(p: Params) {
   return {
     startV: (p.bikeStart ? p.bikeKmh : p.walkKmh) / 3.6,

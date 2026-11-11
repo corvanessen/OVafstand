@@ -27,6 +27,7 @@ export const state = {
   source: "point" as Source,
   editing: "a" as Which, // het punt dat klikken, zoeken en de voorbeelden verplaatsen
   bikeLoaded: false, // het fietsraster komt na de graaf binnen
+  walkLoaded: false, // het looptraster komt na het fietsraster binnen (of ontbreekt)
   nIc: 0, // aantal IC-stations (na "ready")
 };
 
