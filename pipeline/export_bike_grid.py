@@ -1,6 +1,9 @@
 """Fase 3: het fietsraster coderen voor de browser.
 
-Gebruik:  python pipeline/export_bike_grid.py
+Gebruik:  python pipeline/export_bike_grid.py [--profile foot]
+
+--profile foot: het looptraster, data/walk_grid/grens_raw.npz → web/public/data/walk.bin.gz, header "LOPEN1"
+(verder hetzelfde formaat; seedR staat in de header).
 
 Leest data/bike_grid/grens_raw.npz (van build_bike_grid.py) en schrijft web/public/data/bike.bin.gz.
 Keuzes (zie ONTWIKKELPLAN.md, fase 3, stap 5):
@@ -19,13 +22,13 @@ Formaat (little endian), daarna gzip:
 """
 import gzip
 import struct
+import sys
 from pathlib import Path
 
 import numpy as np
+from build_bike_grid import parse_args
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW = ROOT / "data" / "bike_grid" / "grens_raw.npz"
-OUT = ROOT / "web" / "public" / "data" / "bike.bin.gz"
 
 LEVELS = np.array([1.0, 1.04, 1.08, 1.13, 1.19, 1.26, 1.35, 1.46, 1.6, 1.8, 2.05, 2.4, 2.9, 3.6, 4.5])
 SNAP_MAX, SNAP_STEP = 250.0, 17.0
@@ -48,7 +51,26 @@ def shift(arr, di, dj, fill=np.inf):
     return out
 
 
+def seed_bytes(seed, ok):
+    """startcel-afstanden (m) → bytes in stappen van SEED_STEP; 255 = geen verbinding.
+    Verder dan 254 stappen is ook geen verbinding: begrenzen zou de afstand te kort maken
+    (een cel over het water met de brug ver weg), en dan ontstaat een sluiproute.
+    Uitzondering: heeft een halte alleen verre startcellen, dan houdt hij de dichtstbijzijnde (als 254).
+    Zonder startcel valt de halte in de browser terug op een kegel (hemelsbreed), en die negeert water.
+    Een half rondt naar boven af, net als seedByte (Math.round) in bikegrid.ts."""
+    b = np.floor(np.where(ok, seed, np.inf) / SEED_STEP + 0.5)
+    out = np.where(b <= 254, b, 255).astype(np.uint8)
+    only_far = ok.any(1) & (out == 255).all(1)
+    rows = np.flatnonzero(only_far)
+    out[rows, np.argmin(np.where(ok[rows], seed[rows], np.inf), 1)] = 254
+    return out
+
+
 def main():
+    foot = parse_args(sys.argv[1:]).profile == "foot"
+    RAW = ROOT / "data" / ("walk_grid" if foot else "bike_grid") / "grens_raw.npz"
+    OUT = ROOT / "web" / "public" / "data" / ("walk.bin.gz" if foot else "bike.bin.gz")
+    MAGIC = b"LOPEN1\0\0" if foot else b"FIETS1\0\0"
     z = np.load(RAW)
     snap, road, dirs = z["snap"], z["road"], [tuple(d) for d in z["dirs"]]
     NY, NX = snap.shape
@@ -101,9 +123,10 @@ def main():
         cj = np.clip(z["seed_j"] + dj, 0, NY - 1)
         ci = np.clip(z["seed_i"] + di, 0, NX - 1)
         seed_ok[:, m] &= node[cj, ci]
-    seeds = np.where(seed_ok, np.minimum(np.round(seed / SEED_STEP), 254), 255).astype(np.uint8)
+    seeds = seed_bytes(seed, seed_ok)
     n_area = len(seeds)
-    print(f"halteplekken: {n_area}, zonder enige startcel: {(~seed_ok.any(1)).sum()}")
+    print(f"halteplekken: {n_area}, zonder enige startcel: {(seeds == 255).all(1).sum()} "
+          f"(met alleen verre startcellen, de dichtstbijzijnde gehouden: {(seed_ok.any(1) & ~(seed_ok & (seeds < 254)).any(1)).sum()})")
 
     # 5. schrijven
     edges = np.ascontiguousarray(lv.transpose(1, 2, 0)).reshape(-1)     # [cel][richting]
@@ -112,11 +135,11 @@ def main():
     if len(snaps) % 2:
         snaps = np.r_[snaps, 15].astype(np.uint8)
     snaps = (snaps[0::2] << 4 | snaps[1::2]).astype(np.uint8)
-    head = b"FIETS1\0\0" + struct.pack("<4HI", NX, NY, len(dirs), R_, n_area)
+    head = MAGIC + struct.pack("<4HI", NX, NY, len(dirs), R_, n_area)
     head += b"".join(struct.pack("<2b", di, dj) for di, dj in dirs)
     head += struct.pack(f"<{len(LEVELS)}f", *LEVELS) + struct.pack("<2f", SNAP_STEP, SEED_STEP)
     raw = head + edges.tobytes() + snaps.tobytes() + seeds.tobytes()
-    OUT.write_bytes(gzip.compress(raw, 9))
+    OUT.write_bytes(gzip.compress(raw, 9, mtime=0))   # zonder tijdstempel: dezelfde invoer, hetzelfde bestand
     print(f"{OUT}: {len(raw) / 1e6:.1f} MB ruw, {OUT.stat().st_size / 1e6:.2f} MB gzip "
           f"(kanten {len(edges) / 1e6:.1f}, snap {len(snaps) / 1e6:.1f}, startcellen {seeds.size / 1e6:.2f} MB ruw)")
 

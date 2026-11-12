@@ -21,6 +21,8 @@ const RANGES: [NumParam, (v: number) => string][] = [
   ["bikeKmh", (v) => `${v} km/u`],
   ["bikeMaxKm", (v) => `${v} km`],
   ["directMaxKm", (v) => `${v} km`],
+  ["walkKmh", (v) => `${v.toLocaleString("nl")} km/u`],
+  ["walkMaxKm", (v) => `${v.toLocaleString("nl")} km`],
 ];
 const modelRadios = [...document.querySelectorAll<HTMLInputElement>("input[name=model]")];
 const realBikeBox = $<HTMLInputElement>("realBike");
@@ -58,6 +60,7 @@ function syncLegs() {
   $<HTMLInputElement>("directMaxKm").disabled = !params.bikeStart;
   $<HTMLInputElement>("bikeMaxKm").disabled = !params.bikeEnd;
   $<HTMLInputElement>("bikeKmh").disabled = !params.bikeStart && !params.bikeEnd;
+  for (const id of ["walkKmh", "walkMaxKm"]) $<HTMLInputElement>(id).disabled = params.bikeStart && params.bikeEnd;
 }
 tMaxSel.addEventListener("change", () => {
   params.tMaxMin = +tMaxSel.value;

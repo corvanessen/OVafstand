@@ -3,8 +3,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { csaSearch, footpaths, loadTimetable, type Timetable } from "../src/csa";
-import { loadBikeGrid, originAccess, rasterizeBike } from "../src/bikegrid";
+import { loadBikeGrid, loadWalkGrid, originAccess, rasterizeBike } from "../src/bikegrid";
 import { applyDay, loadDay, loadGraph, search, type Day, type Params } from "../src/router";
+import { DEFAULTS } from "../src/state";
 
 const WEB = resolve(import.meta.dirname ?? ".", "../web/public/data") + "/";
 globalThis.fetch = (async (url: string) => {
@@ -15,10 +16,7 @@ globalThis.fetch = (async (url: string) => {
   }
 }) as typeof fetch;
 
-const P: Params = {
-  waitFactor: 0.5, waitCapMin: 30, bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, tMaxMin: 180, realBike: true,
-  departMin: 480, bikeStart: true, bikeEnd: false, day: "wd", timetable: true,
-};
+const P: Params = { ...DEFAULTS, departMin: 480, timetable: true };
 
 const MB = (b: number) => (b / 2 ** 20).toFixed(1).padStart(7) + " MB";
 const gc = (globalThis as { gc?: () => void }).gc ?? (() => {});
@@ -57,9 +55,10 @@ async function main() {
   stage("3 dagen + uurmodel");
   for (const [k, d] of g.dayData) show(`dag ${k}`, d);
 
-  const bike = (await loadBikeGrid(WEB, g))!;
-  stage("fietsraster");
-  show("fietsraster", bike);
+  const bike = { bike: (await loadBikeGrid(WEB, g))!, walk: await loadWalkGrid(WEB, g) };
+  stage(bike.walk ? "fiets- en looptraster" : "fietsraster");
+  show("fietsraster", bike.bike);
+  if (bike.walk) show("looptraster", bike.walk);
 
   const tts = new Map<Day, Timetable>();
   for (const d of g.days) {
@@ -93,10 +92,12 @@ async function main() {
     if (res.csa) show(`  CsaRun`, res.csa);
     show(`  raster`, r);
   }
-  // de Run-objecten van het fietsraster (fromOrigin, fromStops) zijn module-intern: schatting
-  const runBytes = bike.nNode * 12 + 2 * 4 * (1 << 20);
-  console.log(`\nfiets-Dijkstra (2 × Run, hergebruikt): ±${MB(2 * runBytes)} (time/bike/src + wachtrij 2 × 4 MB, groeit zo nodig)`);
-  console.log(`fillDist: ${MB(bike.nodeOfCell.length * 4)}`);
+  // de Run-objecten (fromOrigin op het raster van het eerste stuk, fromStops op dat van het laatste) zijn
+  // module-intern: schatting
+  const runBytes = (n: number) => n * 12 + 2 * 4 * (1 << 20);
+  const nEnd = (bike.walk ?? bike.bike).nNode;
+  console.log(`\nDijkstra (2 × Run, hergebruikt): ±${MB(runBytes(bike.bike.nNode) + runBytes(nEnd))} (time/bike/src + wachtrij 2 × 4 MB, groeit zo nodig)`);
+  console.log(`fillDist: ${MB(bike.bike.nodeOfCell.length * 4)}`);
   console.log(`(${keep.length} resultaten vastgehouden, zodat de meting ze meetelt)`);
 }
 

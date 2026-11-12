@@ -1267,3 +1267,124 @@ Bekeken (broncode en schermafbeeldingen, desktop en telefoon): **OVLive** (ovliv
 - Kleur: viridis houden, maar boven 2 uur lichter of minder verzadigd, zodat verre gebieden minder zwaar ogen.
 - Een eigen domein en links van andere sites (eigenaar).
 - Later, als eigen fase: overlap van 3–4 punten (geheugen: 13,5 MB per run) en een Engelse versie.
+
+## Lopen over voetpaden (plan van 11 nov 2026, branch `lopen`)
+
+Zonder fiets loop je nu 5 km/u, tot 2 km, over het **fietsraster** (6.7 stap 2). Voetpaden waar je niet mag fietsen ontbreken dus, en grens en tempo liggen vast. Plan:
+- **Stap 0:** meten hoeveel dat scheelt met echt lopen. Beslisregel: wijkt het fietsraster bij < 3% van de paren meer dan 5 min af, dan alleen de bediening aanpassen.
+- **Stap 1:** een looptraster in hetzelfde formaat (`walk.bin.gz`), met OSRM `foot.lua` op het grensextract. `build_bike_grid.py`/`export_bike_grid.py` krijgen `--profile bike|foot`.
+- **Stap 2:** de browser met twee rasters, één per stuk. Let op: `rasterizeBike` mengt de tijden nu per knoop. Met twee rasters moet dat per cel, want de knoopnummers verschillen.
+- **Stap 3:** de bediening. Schuiven "Lopen, max" (0,5–8 km, standaard 2) en "Looptempo" (3–6 km/u, standaard **4**: stevig doorwandelen, keuze van Cor; was 5). Deellink `&l=`, `&lt=`. Fieldset "Fiets en lopen". In de voetregel "over voetpaden en wegen".
+
+### Resultaten stap 0: lopen over het fietsraster vs echt lopen (11 nov 2026)
+
+- **Loopserver.** `osrm_setup.sh voet` bouwt OSRM met `foot.lua` op `grens.osm.pbf`. Het resultaat is container `osrm-voet` op `localhost:5001`, naast de fietsserver op :5000.
+  - C: liep vol (de WSL-schijf groeide tot 19,9 GB). Daarom kan de uitvoer met `OSRM_VOET_DIR=/mnt/d/osrm` naar de externe SSD; de invoer komt als los bestand uit `~/osrm` in de container.
+  - Het extract kostte ±25 min en `partition` + `customize` ±8 min, met een piek van 4,8 GB RAM.
+  - Beide servers draaien alleen zolang WSL wakker blijft (`sleep 7200`).
+- **Meting** (`web/bench/walk_check.ts`, `--voorbeelden` toont de grootste verschillen):
+  - 5 regio's, 30 vaste haltes per regio, alle cellen binnen 2 km hemelsbreed. Telt alleen cellen met een voetpad binnen 250 m.
+  - Waarheid: OSRM-voet, inclusief de snapafstanden. Raster: `rasterizeBike` met die ene halte als bron, zoals de kaart het nu doet. Alles bij 4 km/u, dus 5 min = 333 m.
+
+| Regio | Paren | Raster > 5 min | Raster > 2 min | Hemelsbreed × 1,3 > 5 min | Fiets-OSRM > 5 min | Raster − fiets-OSRM > 5 min | Niet bereikt | Raster − voet p50 / p90 / p98 (min) |
+|---|---|---|---|---|---|---|---|---|
+| Utrecht | 5.618 | 36,0% | 66,3% | 35,4% | 32,0% | 12,7% | 4,8% | +1,3 / +6,2 / +13,0 |
+| Zeeland | 5.314 | 16,5% | 42,7% | 33,1% | 9,4% | 9,3% | 2,7% | +1,1 / +5,2 / +8,2 |
+| Den Haag | 5.972 | 31,7% | 74,6% | 23,0% | 18,0% | 10,6% | 0,1% | +2,8 / +6,5 / +9,2 |
+| Amsterdam | 6.110 | 22,7% | 66,9% | 6,8% | 8,7% | 9,0% | 0,2% | +2,9 / +6,5 / +9,2 |
+| Arnhem/Veluwezoom | 5.815 | 39,0% | 70,2% | 37,5% | 35,1% | 10,3% | 3,3% | +1,1 / +5,7 / +10,0 |
+| **Totaal** | 28.829 | **29,3%** | 64,6% | 26,8% | 20,6% | 10,4% | 2,2% | |
+
+- **Lopen over het fietsraster is niet beter dan hemelsbreed × 1,3** (29% tegen 27% meer dan 5 min fout). Het raster is vrijwel altijd te lang (p50 +1 tot +3 min).
+- **Twee foutbronnen, ongeveer even groot:**
+  - **Netwerk.** Fiets-OSRM wijkt bij 21% van de paren meer dan 5 min af van voet-OSRM: in bos en op landgoederen (Lage Vuursche, Zeist, Veluwezoom), in winkelstraten zonder fiets (Leidsestraat en Kalverstraat in Amsterdam) en bij voetpaden tussen wijken (Velp: 1,5 km lopend, 3,2 km fietsend).
+  - **Raster.** Het raster wijkt zelf bij 10% meer dan 5 min af van fiets-OSRM. Bij fietsen was dat < 1%, maar bij lopen weegt dezelfde afwijking in meters 3,75× zwaarder in minuten.
+- **Besluit:** ruim boven de 3%, dus een looptraster bouwen. Een looptraster in het huidige formaat lost alleen de netwerkfout op. De rasterfout (±10%) blijft, tenzij het formaat voor lopen fijner wordt.
+- **Volgende stap (0b):** eerst in de vijf regio's een looptraster bouwen met `bike_grid_test.py --profile foot` en meten of het huidige formaat volstaat: 250 m, 16 richtingen, 4 bits, start in 3 × 3 cellen. Daarna eventueel een fijnere variant meten, bijv. 8 bits per kant of start in 5 × 5 cellen. Pas dan heel NL bouwen (stap 1).
+
+### Resultaten stap 0b: een looptraster in vijf proefregio's (11 nov 2026)
+
+- **Methode.** `pipeline/bike_grid_test.py <regio> 60 16 <R> --foot [--4bit]` bouwt het raster van de regio met de loopserver (16 richtingen) en vergelijkt het met OSRM-voet, bij 4 km/u. Nieuwe regio's: `denhaag`, `amsterdam`, `arnhem`. `pipeline/walk_pairs_summary.py` maakt de tabel.
+- **Alleen paren tot 30 min lopen** (2 km, de loopgrens). Verdere paren komen met die grens niet op de kaart, maar domineerden in stap 0 de uitschieters: barrières als kanalen en snelwegen. Zo is 1,6 km hemelsbreed vanaf Kanaleneiland 3,9 km lopen. `walk_check.ts --max=30` past hetzelfde filter toe op stap 0.
+
+| Hoe | Paren | > 5 min fout | > 2 min fout | p50 / p90 / p98 (min) |
+|---|---|---|---|---|
+| Nu: lopen over het fietsraster (`walk_check.ts --max=30`) | 14.550 | 16,3% | 55,7% | +2,0 / +6,0 / +11 |
+| Hemelsbreed × 1,3 | 27.246 | 9,3% | | |
+| Looptraster, 4 bits, start 3 × 3 (formaat van de fiets) | 27.246 | 4,1% | 32,5% | +1,2 / +3,8 / +5,9 |
+| Looptraster, 8 bits, start 3 × 3 | 27.246 | 4,2% | 33,7% | +1,3 / +3,8 / +6,0 |
+| Looptraster, 4 bits, start 5 × 5 | 27.246 | 1,2% | 17,1% | +0,4 / +2,7 / +4,5 |
+| **Looptraster, 4 bits, start 7 × 7** | 27.246 | **0,5%** | **8,7%** | **+0,0 / +1,8 / +3,5** |
+
+  Per regio is het beeld gelijk. Met start 7 × 7 ligt het tussen 0,1% (Amsterdam) en 1,1% (Zeeland) meer dan 5 min fout. De steekproeven van stap 0 en 0b verschillen (30 en 60 haltes), maar het verschil is veel groter dan dat.
+- **8 bits per kant helpt niet; een grotere startzone wel.** Bij lopen weegt het eerste stuk van halte naar straat zwaar, en dat volgt de startcel exact uit OSRM. Daarna stapelt de rasterfout zich minder op.
+- **Kosten van start 7 × 7:**
+  - 49 in plaats van 9 bytes per halteplek: ±1,7 MB ruw voor ±35k halteplekken (fiets nu 0,31 MB).
+  - In de browser `seedNode` (Int32) + `seedDist` (Float32): 35k × 49 × 8 B = ±14 MB, tegen 2,5 MB bij 3 × 3. Met `seedDist` als byte (× `seedStep`) is het ±8,5 MB.
+  - Rekentijd: de startcellen zijn een lus over halte × 49, dus verwaarloosbaar naast de Dijkstra.
+- **Bijvangst.** Een grotere startzone verbetert waarschijnlijk ook het fietsraster (raster − fiets-OSRM is bij lopen 6,6% meer dan 5 min fout). Bij 15 km/u telt dat minder; dat is nog niet gemeten.
+- **Bedrijfszaken:**
+  - Twee OSRM-servers tegelijk (±3,5 GB elk) plus de 8 threads van de rasterbouw lieten de WSL-VM (9 GB) herstarten. Bouw met één server tegelijk.
+  - `osrm-voet` crashte met SIGBUS toen de externe SSD haperde, en schreef een core dump van 3,8 GB op C:. Nu draaien de servers met `--ulimit core=0`, en de `.fileIndex` (0,5 GB, bij elke vraag gelezen via mmap) staat op de WSL-schijf.
+- ~~**Volgende stap (1):** het looptraster voor heel NL bouwen met `build_bike_grid.py --profile foot` en start in 7 × 7 cellen (`SEED_R = 3`), en exporteren als `walk.bin.gz`.~~ Klaar, zie hieronder.
+
+### Resultaten stap 1–3: looptraster voor heel NL, in de browser (11 nov 2026)
+
+- **Bouw.** `build_bike_grid.py --profile foot` met `THREADS=14`: 173 rijen in ±5 uur, met alleen de loopserver (de fietsserver gestopt). Daarna de startcellen van 34.723 halteplekken in 20 min.
+  - De startcellen liepen eerst vast. Een vraag van 50 haltes × 49 cellen kost los ±9 s, en met 14 threads tegelijk kwamen ze over de time-out van 120 s. Het script herstartte OSRM dan, die moest koud opnieuw laden, en zo liep het rond. Nu gaan er bij lopen 10 haltes in een vraag (±2 s), op volgorde van rastercel.
+  - De SSD viel één keer weg in WSL. Opnieuw koppelen zonder herstart werkte (zie CLAUDE.md).
+- **Uitvoer.** `walk.bin.gz` is 5,54 MB (8,8 MB ruw: kanten 6,3, snap 0,8, startcellen 1,7). Het fietsraster is 4,26 MB.
+  - 981.078 cellen hebben een voetpad binnen 250 m (62%, fiets 979.738).
+  - Er zijn 5,5 miljoen kanten na snoeien.
+  - 442 halteplekken hebben geen enkele startcel.
+- **Nauwkeurigheid** (`walk_check.ts --loop --max=30`, dezelfde steekproef als stap 0):
+
+| Regio | Paren | > 5 min fout | > 2 min fout | Hemelsbreed × 1,3 > 5 min | p50 / p90 / p98 (min) |
+|---|---|---|---|---|---|
+| Utrecht | 2.514 | 1,2% | 12,0% | 11,1% | 0,0 / 2,3 / 4,3 |
+| Zeeland | 2.589 | 1,1% | 7,6% | 15,5% | 0,0 / 1,6 / 4,4 |
+| Den Haag | 3.163 | 0,6% | 9,2% | 9,9% | 0,1 / 1,9 / 3,6 |
+| Amsterdam | 3.771 | 0,2% | 9,1% | 3,7% | 0,1 / 1,9 / 3,3 |
+| Arnhem/Veluwezoom | 2.513 | 0,3% | 9,9% | 10,7% | 0,0 / 2,0 / 3,4 |
+| **Totaal** | 14.550 | **0,7%** | 9,5% | 9,7% | |
+
+  Over het fietsraster was dat 16,3% (stap 0b), en het sluit aan bij de proef met 7 × 7 (0,5%).
+- **Browser.**
+  - De voetregel noemt nu "over de weg en voetpaden".
+  - De telling vanaf Utrecht C blijft 28.960 (standaard). Met lopen bij vertrek (`&s=0`) blijft het ook 28.645: lopend bereik je 58 haltes direct, tegen 57 over het fietsraster, maar dat verandert niets binnen 3 uur.
+  - Met fiets aan beide kanten is de kaart cel voor cel gelijk aan de referentie (`bikegrid_check.ts`). Met lopen wijkt hij af, zoals bedoeld.
+  - Rekentijd route + raster bij lopen bij aankomst: Utrecht C 334 ms, Venlo 194 ms, Aken 58 ms.
+- **Geheugen** (`mem_check.ts`). Het looptraster kost 41,5 MB, het fietsraster 30,7 MB. Het verschil zit in de startcellen: `seedNode` en `seedDist` zijn 6,5 MB elk. Met `seedDist` als byte (× `seedStep`, zoals in het bestand) scheelt dat ±5 MB.
+- **Gevonden tijdens het testen: HTM ontbreekt.** De feed van 10 okt bevat de dienstregeling van HTM maar tot 8 nov, terwijl de feed tot 12 dec loopt. Op alle drie de gekozen dagen (10, 14 en 15 nov) rijdt in Den Haag dus geen tram of bus van HTM: ±4.000 ritten per werkdag. Scheveningen heeft daardoor geen halte binnen 3,9 km. Ook De Lijn stopt na 14 nov, dus op zondag 15 nov rijdt daar niets. Dit staat los van lopen, en zat er al vanaf fase 0 in.
+- ~~**Volgende stap:** een nieuwe feed met HTM, en daarbij per vervoerder controleren dat de gekozen dag erin zit.~~ Klaar, zie hieronder.
+
+### Nieuwe feed: HTM terug (11 nov 2026)
+
+- **Feed** van 11 nov 2026 (versie 9680, looptijd 11 nov – 12 dec, 166 MB; de oude staat als `data/raw/gtfs-nl_20261010.zip`).
+- **`pipeline/feed_days.py`** telt de ritten per vervoerder per dag, met de eerste en laatste dag. Alle grote vervoerders rijden op dinsdag 17, zaterdag 21 en zondag 22 nov (week 47, geen schoolvakantie). Alleen kleine diensten ontbreken op sommige dagen: nachttreinen, pendels. Op dinsdag 24 nov rijdt NS minder (4.383 tegen 4.675 ritten).
+- **De dagen staan nu op één plek:** `pipeline/days.py` (`BASE`, `DAYS`). Eerst stond "20261110" als standaard in negen scripts.
+- **HTM rijdt weer:** 3.972 ritten op de werkdag. Vanaf Scheveningen (lopen bij vertrek, tot 5 km) bereik je 20.056 haltes binnen 3 uur; met de oude feed geen enkele.
+- **De Lijn is veel kleiner** in deze feed: 878 ritten per werkdag tegen 2.676. De haltes diep in Vlaanderen (Genk, Hasselt, Antwerpen, Turnhout) zijn weg. Daardoor zijn er 29.278 halteplekken, tegen 34.723. In Nederland zijn 112 haltenamen verdwenen en 902 nieuw, wat normaal is bij een nieuwe dienstregeling.
+- **Startcellen opnieuw**, want de volgorde van de halteplekken is anders. De rijen van beide rasters zijn hergebruikt. Lopen: 17,5 min, 155 halteplekken zonder startcel (was 442), `walk.bin.gz` 5,30 MB. Fiets: 86 zonder startcel, `bike.bin.gz` 4,22 MB.
+- **Nieuwe controlegetallen** (vanaf Utrecht C):
+  - model A naar Groningen: 112 min (was 111); Amsterdam C 27 en Rotterdam C 37 blijven gelijk;
+  - haltes binnen 3 uur, standaard of met fiets aan beide kanten: 27.402 (was 28.960); met lopen bij vertrek 27.175;
+  - om 08:00: uurmodel 27.004, echte vertrektijden 25.585 (was 28.493 en 26.355).
+
+  `check.ts` gebruikt de nieuwe getallen. De referentie van `bikegrid_check.ts` is opnieuw geschreven.
+- ~~**Volgende stap:** eventueel `seedDist` als byte (±5 MB minder).~~ Klaar (12 nov): `seedDist` is een Uint8Array met de byte uit het bestand, en `seedLen[byte]` geeft de meters, als dezelfde float32-waarde als vroeger. Het looptraster gaat van 39,4 naar 35,3 MB en het fietsraster van 30,3 naar 29,5 MB. Alle 12 kaarten van `bikegrid_check.ts` zijn cel voor cel gelijk. Alleen halteplekken die er in het bestand nog niet zijn (na een nieuwe GTFS-dag) worden nu op 8 m afgerond. Wat er nog kan: `seedNode` (Int32, 5,7 MB bij lopen) weglaten en de knoop uitrekenen uit de cel van de halte. De Lijn volgen: komt die terug in een latere feed, dan de data opnieuw verversen. `og.png` kan opnieuw (`node web/scripts/og.mjs`).
+
+### Bevindingen van roborev verwerkt (12 nov 2026, branch `lopen`)
+
+Na elke commit draaide roborev, maar de uitkomsten waren niet gelezen. Vijf reviews waren afgekeurd. Verwerkt:
+- **Gaten tussen twee rasters** (job 49, 58). Een cel met alleen een knoop van het eerste stuk (bijv. een fietspad zonder voetpad) bleef leeg: 2.376 gaten vanaf Utrecht C. Nu wordt zo'n cel alleen gevuld vanuit buren die vanaf een halte komen, nooit vanuit het vertrekpunt; de barrière tegen sluiproutes blijft. `check.ts` test beide kanten, met een raster zonder een deel van de cellen en een eerste stuk met weggeknipte kanten. De oude code faalt erop (486 en 25 gaten), en zonder barrière ook (58 lekken).
+- **Startcellen begrensd op 2.032 m** (job 45, 54, 55, 59). Een verdere afstand is nu "geen verbinding". Dat raakte 1,1% van de startcellen bij fietsen en 11,3% bij lopen. Een halte met alleen verre startcellen houdt de dichtstbijzijnde (1 halte bij lopen); anders zou hij terugvallen op een kegel die water negeert. Python en browser ronden een half nu gelijk af. Test: `pipeline/test_export_bike_grid.py`.
+- **Kleiner:**
+  - `--profile` gaat via argparse; `--profile=foot` overschreef eerst stilletjes `bike.bin.gz`.
+  - `bikegrid_check.ts` heeft vaste instellingen.
+  - De export schrijft de gzip zonder tijdstempel.
+  - `voet-start` controleert de map.
+  - `csa_bench.ts` neemt de basisdag uit `meta.json`.
+  - `walk_check.ts` sorteert en telt goed.
+- **Basis:** pre-commit (zie CLAUDE.md), `.gitattributes` met `* text=auto eol=lf`, en `.env*` en `config.php` in `.gitignore`.
+- **Volgende stap:** branch `lopen` naar main (PR). Daarna eventueel `seedNode` weglaten (5,7 MB).

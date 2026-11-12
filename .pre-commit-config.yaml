@@ -1,0 +1,43 @@
+# Controles vóór elke commit. Faalt er één, dan gaat de commit niet door.
+# Installeren: pip install pre-commit && pre-commit install
+# Handmatig op alles draaien: pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=6000] # walk.bin.gz is 5,3 MB; de GTFS-zip (166 MB) en .npz horen in data/
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: mixed-line-ending
+        args: [--fix=no]
+
+  - repo: local
+    hooks:
+      - id: geen-config-met-geheimen
+        name: echte configuratie hoort niet in git (alleen voorbeeldbestanden)
+        entry: echte configuratie hoort niet in git; zet geheimen buiten de repo
+        language: fail
+        files: (^|/)(config\.php|\.env[^/]*)$ # dezelfde namen als .env* in .gitignore, ook .envrc
+        exclude: (^|/)\.env\.(example|sample|dist)$
+      - id: typecheck
+        name: TypeScript (tsc --noEmit)
+        entry: npm --prefix web run typecheck --silent
+        language: system
+        pass_filenames: false
+        files: ^web/
+      - id: web-check
+        name: rekenkern en UI-functies (npm run check)
+        entry: npm --prefix web run check --silent
+        language: system
+        pass_filenames: false
+        files: ^web/
+      - id: pipeline-tests
+        name: tests van de pijplijn (unittest)
+        entry: python -m unittest discover -s pipeline -p "test_*.py"
+        language: system
+        pass_filenames: false
+        files: ^pipeline/.*\.py$

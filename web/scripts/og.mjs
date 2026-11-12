@@ -66,11 +66,11 @@ try {
   await send("Page.enable", {}, s);
   await send("Page.navigate", { url: URL0 + HASH }, s);
 
-  // klaar: een kaart over de weg (niet meer "fietsraster laden…")
+  // klaar: een kaart over de weg en voetpaden (het looptraster komt na het fietsraster binnen)
   const t0 = Date.now();
   for (;;) {
     const st = await js(`(document.getElementById("status")?.textContent ?? "") + " | " + (document.getElementById("bikeNote")?.textContent ?? "")`);
-    if (/netwerk \d+ ms/.test(st) && !st.includes("laden") && st.includes("over de weg")) {
+    if (/netwerk \d+ ms/.test(st) && !st.includes("laden") && st.includes("over de weg en voetpaden")) {
       console.log(st);
       break;
     }

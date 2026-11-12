@@ -1,2 +1,13 @@
-*.bin binary
+* text=auto eol=lf
 *.sh text eol=lf
+
+# binaire bestanden: nooit regeleinden omzetten
+*.bin binary
+*.gz binary
+*.png binary
+*.ico binary
+*.jpg binary
+*.webp binary
+*.zip binary
+*.npz binary
+*.pkl binary

@@ -155,12 +155,18 @@
               <label><input type="radio" name="model" value="0" /> Optimistisch (geen wachttijd)</label>
             </fieldset>
             <fieldset>
-              <legend>Fietsen</legend>
+              <legend>Fiets en lopen</legend>
               <label><input id="bikeStart" type="checkbox" /> Fiets bij vertrek</label>
               <label><input id="bikeEnd" type="checkbox" /> Fiets bij aankomst</label>
               <label><input id="realBike" type="checkbox" /> Over de weg (OpenStreetMap)</label>
-              <p class="field-note">Zonder fiets loop je dat stuk: 5 km/u, hooguit 2 km.</p>
+              <p class="field-note">Zonder fiets loop je dat stuk.</p>
             </fieldset>
+            <label class="range">Looptempo <output id="walkKmhOut"></output>
+              <input id="walkKmh" type="range" min="3" max="6" step="0.5" />
+            </label>
+            <label class="range">Lopen, max <output id="walkMaxKmOut"></output>
+              <input id="walkMaxKm" type="range" min="0.5" max="8" step="0.5" />
+            </label>
             <label class="range">Fietssnelheid <output id="bikeKmhOut"></output>
               <input id="bikeKmh" type="range" min="10" max="25" step="1" />
             </label>
@@ -187,7 +193,8 @@
               Beweeg over de kaart voor de reistijd. Klik of tik voor de route, met een knop om daarvandaan te vertrekken.</p>
             <p>Een reis is: fietsen naar een halte, met trein, bus, tram, metro of veerboot verder, en het laatste stuk lopen.
               Of de hele reis fietsen, als dat sneller is. Het fietsen en lopen gaat over echte wegen en fietspaden uit OpenStreetMap.
-              Heb je ook op de plek van aankomst een fiets (een tweede fiets of een OV-fiets)? Zet dan bij de instellingen <b>Fiets bij aankomst</b> aan.</p>
+              Heb je ook op de plek van aankomst een fiets (een tweede fiets of een OV-fiets)? Zet dan bij de instellingen <b>Fiets bij aankomst</b> aan.
+              Lopen gaat standaard 4 km/u, tot 2 km; het tempo en de afstand stel je daar ook in.</p>
             <p><b>Realistisch</b> telt bij elke instap de helft van de tijd tussen twee vertrekken als wachttijd (hooguit 30 min).
               <b>Optimistisch</b> doet alsof je overstap altijd klaarstaat.</p>
             <p><b>Vertrek op een tijdstip</b> rekent met de dienstregeling van dat moment, ook de nachtlijnen. Zo zie je hoe de kaart

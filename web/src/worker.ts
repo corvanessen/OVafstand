@@ -1,7 +1,7 @@
 // Web Worker: houdt de graaf en het laatste resultaat vast, zodat de kaart soepel blijft.
 
 import { csaPath, csaSearch, footpaths, loadTimetable, type CsaRun, type Footpaths, type Timetable } from "./csa";
-import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "./bikegrid";
+import { loadBikeGrid, loadWalkGrid, originAccess, rasterizeBike, type Grids } from "./bikegrid";
 import { NX, NY, cellOf } from "./grid";
 import { colorize, colorizeDiff, rasterize, VIA_DIRECT, VIA_NONE, type Raster } from "./raster";
 import { applyDay, loadDay, loadGraph, pathTo, type Day, search, straightAccess, type Graph, type Params, type Route, type Search, type Segment } from "./router";
@@ -39,9 +39,10 @@ export type Response =
   | { type: "ready"; date: string; nArea: number; ms: number; stations: Station[]; nIc: number;
       days: { key: Day; date: string }[] }
   | { type: "bikeReady"; ok: boolean; ms: number; nNode: number }
+  | { type: "walkReady"; ok: boolean; ms: number; nNode: number }
   // reached: haltes binnen tMax (bij "max" vanaf allebei); split: bij "diff" de haltes waar A en waar B sneller is
   | { type: "result"; id: number; bitmap: ImageBitmap; msRoute: number; msRaster: number; reached: number;
-      split: [number, number] | null; bike: boolean; timetable: boolean }
+      split: [number, number] | null; bike: boolean; walk: boolean; timetable: boolean }
   // parts: één reis per vertrekpunt (A, en bij vergelijken ook B)
   | { type: "explain"; id: number; parts: Explained[] }
   | { type: "profile"; gen: number; departMin: number; km2: number }
@@ -84,7 +85,8 @@ const icStations = (g: Graph) =>
 let graph: Graph | null = null;
 let icAreas: number[] = [];
 let base = "";
-let bike: BikeGrid | null = null;
+// het fietsraster en (daarna) het looptraster; null tot het fietsraster er is
+let grids: Grids | null = null;
 // dienstregeling (fase 4): pas geladen als iemand erom vraagt, één dag tegelijk; null = ontbreekt
 const timetables = new Map<Day, Promise<Timetable | null>>();
 let walks: Footpaths | null = null;
@@ -113,9 +115,9 @@ const CELL_KM2 = 0.0625; // een cel is ±250 × 250 m
  *  pt null: vanaf alle IC-stations tegelijk */
 function run(g: Graph, pt: Point | null, p: Params, tt: Timetable | null): Run {
   const t0 = performance.now();
-  const useBike = p.realBike && bike !== null;
+  const useBike = p.realBike && grids !== null;
   let init: Float64Array;
-  if (pt) init = useBike ? originAccess(bike!, g, pt.lat, pt.lon, p) : straightAccess(g, pt.lat, pt.lon, p);
+  if (pt) init = useBike ? originAccess(grids!, g, pt.lat, pt.lon, p) : straightAccess(g, pt.lat, pt.lon, p);
   else {
     // Gerekend vanaf de stations, bedoeld als reistijd naar het station: het laatste stuk ligt aan de
     // kant van de plek zelf, dus dat volgt "fiets bij vertrek". Het netwerk is bijna symmetrisch.
@@ -131,7 +133,7 @@ function run(g: Graph, pt: Point | null, p: Params, tt: Timetable | null): Run {
     csa = { tt, run: res.csa, day: p.day };
   } else s = search(g, init, p);
   const t1 = performance.now();
-  const r = useBike ? rasterizeBike(bike!, g, s, pt, p) : rasterize(g, s, pt, p);
+  const r = useBike ? rasterizeBike(grids!, g, s, pt, p) : rasterize(g, s, pt, p);
   return { s, r, useBike, msRoute: t1 - t0, msRaster: performance.now() - t1, csa };
 }
 
@@ -140,7 +142,7 @@ function run(g: Graph, pt: Point | null, p: Params, tt: Timetable | null): Run {
 const runCache = new Map<string, Run>();
 const KEEP_RUNS = 2;
 function cachedRun(g: Graph, pt: Point | null, p: Params, tt: Timetable | null): Run {
-  const key = JSON.stringify([pt ? [pt.lat, pt.lon] : "ic", p, bike !== null]);
+  const key = JSON.stringify([pt ? [pt.lat, pt.lon] : "ic", p, grids !== null, grids?.walk != null]);
   const hit = runCache.get(key);
   if (hit) runCache.delete(key); // achteraan: het laatst gebruikt
   const r = hit ?? run(g, pt, p, tt);
@@ -237,11 +239,23 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       // het fietsraster (±2 MB) komt erna; tot dan rekent de kaart hemelsbreed
       const t1 = performance.now();
       try {
-        bike = await loadBikeGrid(m.base, graph);
+        const bike = await loadBikeGrid(m.base, graph);
+        if (bike) grids = { bike, walk: null };
       } catch (err) {
         console.warn("fietsraster niet geladen:", err);
       }
-      post({ type: "bikeReady", ok: bike !== null, ms: performance.now() - t1, nNode: bike?.nNode ?? 0 });
+      post({ type: "bikeReady", ok: grids !== null, ms: performance.now() - t1, nNode: grids?.bike.nNode ?? 0 });
+      // het looptraster komt als laatste; tot dan, of als het ontbreekt, gaat lopen over het fietsraster
+      if (grids) {
+        const t2 = performance.now();
+        try {
+          const walk = await loadWalkGrid(m.base, graph);
+          if (walk) grids = { ...grids, walk };
+        } catch (err) {
+          console.warn("looptraster niet geladen:", err);
+        }
+        post({ type: "walkReady", ok: grids.walk !== null, ms: performance.now() - t2, nNode: grids.walk?.nNode ?? 0 });
+      }
     } else if (m.type === "compute" && graph) {
       // het uurmodel (±0,6 MB) pas laden als er een vertrektijd gekozen is
       const g = graph;
@@ -273,7 +287,7 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       }
       const sum = (k: "msRoute" | "msRaster") => runs.reduce((t, r) => t + r[k], 0);
       post({ type: "result", id: m.id, bitmap, msRoute: sum("msRoute"), msRaster: sum("msRaster") + t2 - t1, reached, split,
-        bike: runs[0].useBike, timetable: tt !== null }, [bitmap]);
+        bike: runs[0].useBike, walk: runs[0].useBike && grids?.walk != null, timetable: tt !== null }, [bitmap]);
     } else if (m.type === "profile" && graph) {
       const p = { ...m.params, departMin: m.departMin };
       const g = graph;

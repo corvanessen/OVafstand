@@ -16,6 +16,7 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
+from days import BASE
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -140,7 +141,7 @@ def plot(g, grid, lat, lon, name, wait_factor, out):
 def main():
     lat, lon, name = float(sys.argv[1]), float(sys.argv[2]), sys.argv[3]
     wait_factor = float(sys.argv[4]) if len(sys.argv) > 4 else 0.5
-    date = sys.argv[5] if len(sys.argv) > 5 else "20261110"
+    date = sys.argv[5] if len(sys.argv) > 5 else BASE
 
     g = load_graph(date)
     mat = build_matrix(g, wait_factor)

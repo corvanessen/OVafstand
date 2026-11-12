@@ -8,3 +8,9 @@ node_modules/
 web/dist/
 # roborev snapshots
 /.roborev/
+# echte configuratie en geheimen nooit in git (alleen voorbeeldbestanden)
+config.php
+.env*
+!.env.example
+!.env.sample
+!.env.dist
