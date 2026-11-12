@@ -1,11 +1,11 @@
-// Lopen, stap 0: hoe goed is lopen over het fietsraster (wat de kaart nu doet) vergeleken met echt lopen?
+// Lopen, stap 0 en 1: hoe goed is lopen over het fietsraster (of met --loop over het looptraster) vergeleken met echt lopen?
 // Waarheid: de OSRM-loopserver (localhost:5001, osrm_setup.sh voet). Ter scheiding van de foutbronnen ook
 // de fietsserver (:5000): fiets-OSRM vs voet-OSRM is het verschil in netwerk, raster vs fiets-OSRM de rasterfout.
-// Per regio een vaste steekproef haltes, per halte de cellen binnen RADIUS_M hemelsbreed. Tijden bij 5 km/u.
+// Per regio een vaste steekproef haltes, per halte de cellen binnen RADIUS_M hemelsbreed. Tijden bij KMH (4 km/u).
 //   cd web && npx rolldown bench/walk_check.ts --platform node -o ../data/walk_check.mjs && node ../data/walk_check.mjs
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadBikeGrid, loadWalkGrid, rasterizeBike } from "../src/bikegrid";
+import { cellCenter, loadBikeGrid, loadWalkGrid, rasterizeBike } from "../src/bikegrid";
 import { CELL, NX, NY, X0, Y0, mercX, mercY } from "../src/grid";
 import { applyDay, distM, loadGraph, DETOUR, type Params, type Search } from "../src/router";
 import { DEFAULTS } from "../src/state";
@@ -40,7 +40,7 @@ const REGIONS: Record<string, [number, number, number, number]> = { // lat_min, 
   amsterdam: [52.33, 52.4, 4.85, 4.95],
   "arnhem/veluwezoom": [51.95, 52.06, 5.85, 6.05],
 };
-// lopen, zonder afkapping binnen het venster: grens ruim boven RADIUS_M. Over het fietsraster: als "fiets
+// lopen (KMH), zonder afkapping binnen het venster: grens ruim boven RADIUS_M. Over het fietsraster: als "fiets
 // bij aankomst" met looptempo; over het looptraster: lopen bij aankomst.
 const P: Params = LOOP
   ? { ...DEFAULTS, walkKmh: KMH, walkMaxKm: 4, bikeEnd: false }
@@ -56,8 +56,6 @@ function rng(seed: number) {
   };
 }
 
-const cellLat = (j: number) => (2 * Math.atan(Math.exp((Y0 + (j + 0.5) * CELL) / 6378137)) - Math.PI / 2) * (180 / Math.PI);
-const cellLon = (i: number) => ((X0 + (i + 0.5) * CELL) / 6378137) * (180 / Math.PI);
 
 interface Table { durations?: unknown; distances: (number | null)[][]; sources: { distance: number }[]; destinations: { distance: number }[] }
 
@@ -81,6 +79,7 @@ function walked(t: Table, k: number): number {
 
 const q = (a: number[], p: number) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const pct = (n: number, d: number) => `${((100 * n) / d).toFixed(1)}%`.padStart(6);
+const fb = (n: number, d: number) => (LOOP ? "–".padStart(6) : pct(n, d)); // fietskolommen: niet gemeten met --loop
 
 async function main() {
   const g = await loadGraph(WEB);
@@ -103,7 +102,7 @@ async function main() {
     while (picks.size < Math.min(N_STOPS, inside.length)) picks.add(inside[Math.floor(r() * inside.length)]);
 
     const err: number[] = [];
-    const worst: [number, string][] = []; // grootste verschillen raster − voet, om de waarheid na te lopen
+    const worst: [number, string][] = []; // grootste verschillen (zie --voorbeelden hieronder), om de waarheid na te lopen
     const c = { n: 0, g5: 0, g2: 0, m5: 0, b5: 0, r5: 0, miss: 0 };
     for (const a of picks) {
       const lat = g.areaLat[a], lon = g.areaLon[a];
@@ -117,9 +116,10 @@ async function main() {
       const cells: number[] = [], pts: [number, number][] = [[lat, lon]];
       for (let j = Math.max(0, oj - R); j <= Math.min(NY - 1, oj + R); j++) {
         for (let i = Math.max(0, oi - R); i <= Math.min(NX - 1, oi + R); i++) {
-          if (distM(lat, lon, cellLat(j), cellLon(i)) > RADIUS_M) continue;
+          const [clat, clon] = cellCenter(i, j);
+          if (distM(lat, lon, clat, clon) > RADIUS_M) continue;
           cells.push(j * NX + i);
-          pts.push([cellLat(j), cellLon(i)]);
+          pts.push([clat, clon]);
         }
       }
       const [foot, bike] = await Promise.all([table(FOOT, pts), LOOP ? null : table(BIKE, pts)]);
@@ -131,23 +131,25 @@ async function main() {
         const G = time[cells[k]];
         const M = (distM(lat, lon, pts[k + 1][0], pts[k + 1][1]) * DETOUR) / v;
         c.n++;
-        if (!Number.isFinite(G)) { c.miss++; continue; }
-        err.push(G - T);
-        worst.push([B - T, `${g.areaNames[a]} (${lat.toFixed(5)},${lon.toFixed(5)}) → ${pts[k + 1][0].toFixed(5)},${pts[k + 1][1].toFixed(5)}: voet ${T.toFixed(0)}, fiets-OSRM ${B.toFixed(0)}, raster ${G.toFixed(0)}, hemelsbreed×1,3 ${M.toFixed(0)} min`]);
-        if (Math.abs(G - T) > 5) c.g5++;
-        if (Math.abs(G - T) > 2) c.g2++;
+        // niet bereikt telt als fout van het raster; de andere kolommen tellen het paar gewoon mee
+        if (!Number.isFinite(G)) c.miss++;
+        else err.push(G - T);
+        // --voorbeelden: met de fietsserver de grootste netwerkverschillen (fiets-OSRM − voet), anders raster − voet
+        worst.push([bike ? B - T : Number.isFinite(G) ? G - T : Infinity, `${g.areaNames[a]} (${lat.toFixed(5)},${lon.toFixed(5)}) → ${pts[k + 1][0].toFixed(5)},${pts[k + 1][1].toFixed(5)}: voet ${T.toFixed(0)}, fiets-OSRM ${B.toFixed(0)}, raster ${G.toFixed(0)}, hemelsbreed×1,3 ${M.toFixed(0)} min`]);
+        if (!(Math.abs(G - T) <= 5)) c.g5++; // ook als G Infinity is
+        if (!(Math.abs(G - T) <= 2)) c.g2++;
         if (Math.abs(M - T) > 5) c.m5++;
-        if (!Number.isFinite(B) || Math.abs(B - T) > 5) c.b5++;
-        if (Number.isFinite(B) && Math.abs(G - B) > 5) c.r5++;
+        if (bike && !(Math.abs(B - T) <= 5)) c.b5++;
+        if (bike && Number.isFinite(B) && !(Math.abs(G - B) <= 5)) c.r5++;
       }
     }
     for (const k of Object.keys(total) as (keyof typeof total)[]) total[k] += c[k];
     const p = [0.5, 0.9, 0.98].map((x) => q(err, x).toFixed(1)).join(" / ");
     if (process.argv.includes("--voorbeelden")) for (const [, w] of worst.sort((x, y) => y[0] - x[0]).slice(0, 3)) console.log("    " + w);
-    console.log(`${name.padEnd(18)} ${String(c.n).padStart(6)}  ${pct(c.g5, c.n)}    ${pct(c.g2, c.n)}    ${pct(c.m5, c.n)}      ${pct(c.b5, c.n)}       ${pct(c.r5, c.n)}           ${pct(c.miss, c.n)}     ${p}`);
+    console.log(`${name.padEnd(18)} ${String(c.n).padStart(6)}  ${pct(c.g5, c.n)}    ${pct(c.g2, c.n)}    ${pct(c.m5, c.n)}      ${fb(c.b5, c.n)}       ${fb(c.r5, c.n)}           ${pct(c.miss, c.n)}     ${p}`);
   }
   const t = total;
-  console.log(`${"totaal".padEnd(18)} ${String(t.n).padStart(6)}  ${pct(t.g5, t.n)}    ${pct(t.g2, t.n)}    ${pct(t.m5, t.n)}      ${pct(t.b5, t.n)}       ${pct(t.r5, t.n)}           ${pct(t.miss, t.n)}`);
+  console.log(`${"totaal".padEnd(18)} ${String(t.n).padStart(6)}  ${pct(t.g5, t.n)}    ${pct(t.g2, t.n)}    ${pct(t.m5, t.n)}      ${fb(t.b5, t.n)}       ${fb(t.r5, t.n)}           ${pct(t.miss, t.n)}`);
 }
 
 main();

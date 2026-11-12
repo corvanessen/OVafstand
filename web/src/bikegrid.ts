@@ -287,7 +287,7 @@ let fromStops: Run | null = null;
 let originGrid: BikeGrid | null = null; // het raster van de laatste originAccess (fromOrigin hoort erbij)
 
 /** middelpunt van cel (i, j) in graden */
-function cellCenter(i: number, j: number): [number, number] {
+export function cellCenter(i: number, j: number): [number, number] {
   const x = X0 + (i + 0.5) * CELL, y = Y0 + (j + 0.5) * CELL;
   return [(2 * Math.atan(Math.exp(y / 6378137)) - Math.PI / 2) * (180 / Math.PI), (x / 6378137) * (180 / Math.PI)];
 }
