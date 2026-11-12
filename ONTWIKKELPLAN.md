@@ -1373,3 +1373,18 @@ Zonder fiets loop je nu 5 km/u, tot 2 km, over het **fietsraster** (6.7 stap 2).
 
   `check.ts` gebruikt de nieuwe getallen. De referentie van `bikegrid_check.ts` is opnieuw geschreven.
 - ~~**Volgende stap:** eventueel `seedDist` als byte (±5 MB minder).~~ Klaar (12 nov): `seedDist` is een Uint8Array met de byte uit het bestand, en `seedLen[byte]` geeft de meters, als dezelfde float32-waarde als vroeger. Het looptraster gaat van 39,4 naar 35,3 MB en het fietsraster van 30,3 naar 29,5 MB. Alle 12 kaarten van `bikegrid_check.ts` zijn cel voor cel gelijk. Alleen halteplekken die er in het bestand nog niet zijn (na een nieuwe GTFS-dag) worden nu op 8 m afgerond. Wat er nog kan: `seedNode` (Int32, 5,7 MB bij lopen) weglaten en de knoop uitrekenen uit de cel van de halte. De Lijn volgen: komt die terug in een latere feed, dan de data opnieuw verversen. `og.png` kan opnieuw (`node web/scripts/og.mjs`).
+
+### Bevindingen van roborev verwerkt (12 nov 2026, branch `lopen`)
+
+Na elke commit draaide roborev, maar de uitkomsten waren niet gelezen. Vijf reviews waren afgekeurd. Verwerkt:
+- **Gaten tussen twee rasters** (job 49, 58). Een cel met alleen een knoop van het eerste stuk (bijv. een fietspad zonder voetpad) bleef leeg: 2.376 gaten vanaf Utrecht C. Nu wordt zo'n cel alleen gevuld vanuit buren die vanaf een halte komen, nooit vanuit het vertrekpunt; de barrière tegen sluiproutes blijft. `check.ts` test beide kanten, met een raster zonder een deel van de cellen en een eerste stuk met weggeknipte kanten. De oude code faalt erop (486 en 25 gaten), en zonder barrière ook (58 lekken).
+- **Startcellen begrensd op 2.032 m** (job 45, 54, 55, 59). Een verdere afstand is nu "geen verbinding". Dat raakte 1,1% van de startcellen bij fietsen en 11,3% bij lopen. Een halte met alleen verre startcellen houdt de dichtstbijzijnde (1 halte bij lopen); anders zou hij terugvallen op een kegel die water negeert. Python en browser ronden een half nu gelijk af. Test: `pipeline/test_export_bike_grid.py`.
+- **Kleiner:**
+  - `--profile` gaat via argparse; `--profile=foot` overschreef eerst stilletjes `bike.bin.gz`.
+  - `bikegrid_check.ts` heeft vaste instellingen.
+  - De export schrijft de gzip zonder tijdstempel.
+  - `voet-start` controleert de map.
+  - `csa_bench.ts` neemt de basisdag uit `meta.json`.
+  - `walk_check.ts` sorteert en telt goed.
+- **Basis:** pre-commit (zie CLAUDE.md), `.gitattributes` met `* text=auto eol=lf`, en `.env*` en `config.php` in `.gitignore`.
+- **Volgende stap:** branch `lopen` naar main (PR). Daarna eventueel `seedNode` weglaten (5,7 MB).
