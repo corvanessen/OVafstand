@@ -135,7 +135,7 @@ async function main() {
         if (!Number.isFinite(G)) c.miss++;
         else err.push(G - T);
         // --voorbeelden: met de fietsserver de grootste netwerkverschillen (fiets-OSRM − voet), anders raster − voet
-        worst.push([bike ? B - T : Number.isFinite(G) ? G - T : Infinity, `${g.areaNames[a]} (${lat.toFixed(5)},${lon.toFixed(5)}) → ${pts[k + 1][0].toFixed(5)},${pts[k + 1][1].toFixed(5)}: voet ${T.toFixed(0)}, fiets-OSRM ${B.toFixed(0)}, raster ${G.toFixed(0)}, hemelsbreed×1,3 ${M.toFixed(0)} min`]);
+        worst.push([bike ? (Number.isFinite(B) ? B - T : Infinity) : Number.isFinite(G) ? G - T : Infinity, `${g.areaNames[a]} (${lat.toFixed(5)},${lon.toFixed(5)}) → ${pts[k + 1][0].toFixed(5)},${pts[k + 1][1].toFixed(5)}: voet ${T.toFixed(0)}, fiets-OSRM ${B.toFixed(0)}, raster ${G.toFixed(0)}, hemelsbreed×1,3 ${M.toFixed(0)} min`]);
         if (!(Math.abs(G - T) <= 5)) c.g5++; // ook als G Infinity is
         if (!(Math.abs(G - T) <= 2)) c.g2++;
         if (Math.abs(M - T) > 5) c.m5++;

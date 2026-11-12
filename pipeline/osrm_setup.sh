@@ -88,6 +88,8 @@ case "${1:-nl}" in
     else MOUNTS=(-v "$SRC:/data/grens-voet.osm.pbf:ro")
     fi
     if [[ $1 == voet ]]; then process grens-voet; fi
+    # anders start de server zonder data en blijft hij herstarten (--restart unless-stopped), terwijl dit script "klaar" zegt
+    [[ -f grens-voet.osrm.mldgr ]] || { echo "geen grens-voet in $DIR; zet OSRM_VOET_DIR (bijv. /mnt/d/osrm) of bouw eerst met: voet"; exit 1; }
     if [[ $DIR != ~/osrm ]]; then
       # osrm-routed leest de ruimtelijke index (.fileIndex) bij elke vraag via mmap. Een hapering van de externe
       # schijf gaf SIGBUS (11 nov 2026). Daarom staat die index (±0,5 GB) op de WSL-schijf; de rest leest hij bij de start.

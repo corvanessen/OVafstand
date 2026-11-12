@@ -23,7 +23,7 @@ globalThis.fetch = (async (url: string) => {
 
 // De instellingen die de kaart bepalen staan hier vast, niet via DEFAULTS: een andere standaard in de app
 // mag de referentie niet ongemerkt ongeldig maken (dan lijkt een gewijzigde instelling een fout in de Dijkstra).
-// De rest (bijv. day, departMin) komt uit DEFAULTS.
+// Alle velden van Params staan hier vast; ...DEFAULTS vult alleen velden aan die later bij Params komen.
 const P: Params = {
   ...DEFAULTS, waitFactor: 0.5, waitCapMin: 30, tMaxMin: 180, realBike: true, departMin: null, day: "wd", timetable: false,
   bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, bikeStart: true, bikeEnd: false, walkKmh: 4, walkMaxKm: 2,

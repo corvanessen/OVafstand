@@ -1,7 +1,7 @@
 // Verkenning fase 4: hoe snel is een dienstregelingsrouter (CSA) in JS, en hoe verhoudt die zich tot A+?
 // Alleen een meting, geen onderdeel van de website.
 //
-//   python pipeline/export_connections.py 20261110      (maakt data/connections_20261110.bin)
+//   python pipeline/export_connections.py               (maakt data/connections_<datum>.bin voor de basisdag)
 //   cd web && npx rolldown bench/csa_bench.ts --platform node -o ../data/csa_bench.mjs && node ../data/csa_bench.mjs
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -9,7 +9,7 @@ import { applyDay, loadDay, loadGraph, search, straightAccess, type Graph, type 
 import { DEFAULTS } from "../src/state";
 
 const ROOT = resolve(import.meta.dirname ?? ".", "..");
-const DATE = process.argv[2] ?? "20261110";
+const DATE = process.argv[2] ?? JSON.parse(readFileSync(resolve(ROOT, "web/public/data/meta.json"), "utf8")).date; // de basisdag van de data
 const WEB = resolve(ROOT, "web/public/data") + "/";
 
 // loadGraph en fetchGz gebruiken fetch; hier lezen we van schijf
