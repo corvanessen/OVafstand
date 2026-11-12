@@ -1387,4 +1387,4 @@ Na elke commit draaide roborev, maar de uitkomsten waren niet gelezen. Vijf revi
   - `csa_bench.ts` neemt de basisdag uit `meta.json`.
   - `walk_check.ts` sorteert en telt goed.
 - **Basis:** pre-commit (zie CLAUDE.md), `.gitattributes` met `* text=auto eol=lf`, en `.env*` en `config.php` in `.gitignore`.
-- **Volgende stap:** branch `lopen` naar main (PR). Daarna eventueel `seedNode` weglaten (5,7 MB).
+- ~~**Volgende stap:** branch `lopen` naar main (PR).~~ Klaar: PR #14, live op 12 nov 2026 (`walk.bin.gz` en de dagen 17, 21 en 22 nov gecontroleerd op de site). Daarna eventueel `seedNode` weglaten (5,7 MB).
