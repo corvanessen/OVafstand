@@ -26,12 +26,9 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from build_bike_grid import parse_args
 
 ROOT = Path(__file__).resolve().parent.parent
-FOOT = "--profile" in sys.argv and sys.argv[sys.argv.index("--profile") + 1] == "foot"
-RAW = ROOT / "data" / ("walk_grid" if FOOT else "bike_grid") / "grens_raw.npz"
-OUT = ROOT / "web" / "public" / "data" / ("walk.bin.gz" if FOOT else "bike.bin.gz")
-MAGIC = b"LOPEN1\0\0" if FOOT else b"FIETS1\0\0"
 
 LEVELS = np.array([1.0, 1.04, 1.08, 1.13, 1.19, 1.26, 1.35, 1.46, 1.6, 1.8, 2.05, 2.4, 2.9, 3.6, 4.5])
 SNAP_MAX, SNAP_STEP = 250.0, 17.0
@@ -63,6 +60,10 @@ def seed_bytes(seed, ok):
 
 
 def main():
+    foot = parse_args(sys.argv[1:]).profile == "foot"
+    RAW = ROOT / "data" / ("walk_grid" if foot else "bike_grid") / "grens_raw.npz"
+    OUT = ROOT / "web" / "public" / "data" / ("walk.bin.gz" if foot else "bike.bin.gz")
+    MAGIC = b"LOPEN1\0\0" if foot else b"FIETS1\0\0"
     z = np.load(RAW)
     snap, road, dirs = z["snap"], z["road"], [tuple(d) for d in z["dirs"]]
     NY, NX = snap.shape
@@ -130,7 +131,7 @@ def main():
     head += b"".join(struct.pack("<2b", di, dj) for di, dj in dirs)
     head += struct.pack(f"<{len(LEVELS)}f", *LEVELS) + struct.pack("<2f", SNAP_STEP, SEED_STEP)
     raw = head + edges.tobytes() + snaps.tobytes() + seeds.tobytes()
-    OUT.write_bytes(gzip.compress(raw, 9))
+    OUT.write_bytes(gzip.compress(raw, 9, mtime=0))   # zonder tijdstempel: dezelfde invoer, hetzelfde bestand
     print(f"{OUT}: {len(raw) / 1e6:.1f} MB ruw, {OUT.stat().st_size / 1e6:.2f} MB gzip "
           f"(kanten {len(edges) / 1e6:.1f}, snap {len(snaps) / 1e6:.1f}, startcellen {seeds.size / 1e6:.2f} MB ruw)")
 

@@ -1,5 +1,7 @@
 // Controle van bikegrid.ts: rekentijd, geheugen en uitkomst, vergeleken met een referentie.
 // De eerste keer schrijft het de rastertijden naar data/bikegrid_ref.bin; daarna vergelijkt het cel voor cel.
+// Na een nieuwe dataset (graph.bin, bike.bin.gz, walk.bin.gz) of een bedoelde wijziging van de uitkomst:
+// opnieuw met --ref, in dezelfde commit, en de reden in de commit.
 //   cd web && npx rolldown bench/bikegrid_check.ts --platform node -o ../data/bikegrid_check.mjs && node ../data/bikegrid_check.mjs [--ref]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -19,12 +21,18 @@ globalThis.fetch = (async (url: string) => {
   }
 }) as typeof fetch;
 
-const P: Params = { ...DEFAULTS };
+// De instellingen die de kaart bepalen staan hier vast, niet via DEFAULTS: een andere standaard in de app
+// mag de referentie niet ongemerkt ongeldig maken (dan lijkt een gewijzigde instelling een fout in de Dijkstra).
+// De rest (bijv. day, departMin) komt uit DEFAULTS.
+const P: Params = {
+  ...DEFAULTS, waitFactor: 0.5, waitCapMin: 30, tMaxMin: 180, realBike: true, departMin: null, day: "wd", timetable: false,
+  bikeKmh: 15, bikeMaxKm: 5, directMaxKm: 15, bikeStart: true, bikeEnd: false, walkKmh: 4, walkMaxKm: 2,
+};
 const POINTS: [string, number, number][] = [
   ["Utrecht C", 52.0894, 5.11], ["Venlo", 51.3645, 6.1712], ["Maastricht", 50.8497, 5.7056],
   ["Groningen", 53.2105, 6.5641], ["Vlissingen", 51.4426, 3.5966], ["Aken", 50.7676, 6.0911],
 ];
-// fiets bij aankomst uit en aan (15 km): het zwaarste geval voor de tweede Dijkstra
+// lopen bij aankomst (2 km), en fiets bij aankomst (15 km): het zwaarste geval voor de tweede Dijkstra
 const CASES: Params[] = [P, { ...P, bikeEnd: true, bikeMaxKm: 15 }];
 
 async function main() {

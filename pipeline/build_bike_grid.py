@@ -16,6 +16,7 @@ Het script is te onderbreken: elke rij blokken wordt apart bewaard in data/bike_
 en bij een nieuwe start overgeslagen. Resultaat: data/bike_grid/grens_raw.npz met de ruwe
 OSRM-afstanden (float32, meters). Het coderen voor de browser (4 bits, snoeien) is een aparte stap.
 """
+import argparse
 import json
 import os
 import subprocess
@@ -30,11 +31,24 @@ import numpy as np
 from days import BASE
 
 ROOT = Path(__file__).resolve().parent.parent
-ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
-FOOT = "--profile" in sys.argv and sys.argv[sys.argv.index("--profile") + 1] == "foot"
-if FOOT:
-    ARGS.remove("foot")
-DATE = ARGS[0] if ARGS else BASE
+
+
+def parse_args(argv):
+    """[YYYYMMDD] [--profile bike|foot]; ook voor export_bike_grid.py"""
+    def date(s):
+        if not (len(s) == 8 and s.isdigit()):
+            raise argparse.ArgumentTypeError(f"geen datum (YYYYMMDD): {s}")
+        return s
+    ap = argparse.ArgumentParser(description="fiets- of looptraster bouwen met OSRM")
+    ap.add_argument("date", nargs="?", default=BASE, type=date, help="dag van de graaf (standaard days.BASE)")
+    ap.add_argument("--profile", choices=["bike", "foot"], default="bike")
+    return ap.parse_args(argv)
+
+
+# alleen de eigen argumenten lezen als dit script zelf draait (bike_ferry_check.py importeert het)
+_ARGS = parse_args(sys.argv[1:] if __name__ == "__main__" else [])
+FOOT = _ARGS.profile == "foot"
+DATE = _ARGS.date
 OSRM = "http://localhost:5001/table/v1/foot/" if FOOT else "http://localhost:5000/table/v1/bike/"
 CONTAINER = "osrm-voet" if FOOT else "osrm-fiets"   # zie osrm_setup.sh
 OUT = ROOT / "data" / ("walk_grid" if FOOT else "bike_grid")
