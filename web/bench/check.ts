@@ -4,7 +4,7 @@
 // de verwachte waarden verschuiven: dan eerst nagaan waarom, en ze hier bijwerken.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "../src/bikegrid";
+import { loadBikeGrid, originAccess, rasterizeBike, seedByte, type BikeGrid } from "../src/bikegrid";
 import { csaPath, csaSearch, footpaths, loadTimetable } from "../src/csa";
 import { diffText, explainHtml, hoverHtml, type ExplainCtx } from "../src/explain";
 import { clockSec, fmtMin, footNote, inRange } from "../src/format";
@@ -100,6 +100,11 @@ async function main() {
     "fiets bij vertrek, lopen bij aankomst · over de weg (OpenStreetMap)");
   expect("voetregel fiets heen en terug: geen voetpaden", footNote(true, true, "walk"), "fiets heen en terug · over de weg (OpenStreetMap)");
   expect("voetregel hemelsbreed", footNote(false, false, "straight"), "lopen van en naar de halte · afstand hemelsbreed × 1,3");
+
+  // startcellen: een afstand verder dan 254 stappen is geen verbinding (niet begrensd: anders een sluiproute)
+  expect("startcel 100 m in stappen van 8 m", seedByte(100, 8), 13);
+  expect("startcel 2.032 m is nog een verbinding", seedByte(2032, 8), 254);
+  expect("startcel 3.500 m is geen verbinding", seedByte(3500, 8), 255);
 
   // deellink: een getal telt alleen binnen het bereik en op de stap van de schuif (allowlist, hash.ts)
   const walkSlider = [0.5, 8, 0.5] as const; // min, max, stap van "Lopen, max"

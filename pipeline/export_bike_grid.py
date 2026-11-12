@@ -54,6 +54,14 @@ def shift(arr, di, dj, fill=np.inf):
     return out
 
 
+def seed_bytes(seed, ok):
+    """startcel-afstanden (m) → bytes in stappen van SEED_STEP; 255 = geen verbinding.
+    Verder dan 254 stappen is ook geen verbinding: begrenzen zou de afstand te kort maken
+    (een cel over het water met de brug ver weg), en dan ontstaat een sluiproute."""
+    b = np.round(np.where(ok, seed, np.inf) / SEED_STEP)
+    return np.where(b <= 254, b, 255).astype(np.uint8)
+
+
 def main():
     z = np.load(RAW)
     snap, road, dirs = z["snap"], z["road"], [tuple(d) for d in z["dirs"]]
@@ -107,7 +115,7 @@ def main():
         cj = np.clip(z["seed_j"] + dj, 0, NY - 1)
         ci = np.clip(z["seed_i"] + di, 0, NX - 1)
         seed_ok[:, m] &= node[cj, ci]
-    seeds = np.where(seed_ok, np.minimum(np.round(seed / SEED_STEP), 254), 255).astype(np.uint8)
+    seeds = seed_bytes(seed, seed_ok)
     n_area = len(seeds)
     print(f"halteplekken: {n_area}, zonder enige startcel: {(~seed_ok.any(1)).sum()}")
 

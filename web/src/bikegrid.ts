@@ -168,14 +168,21 @@ async function loadGrid(url: string, want: string, g: Graph): Promise<BikeGrid |
         const n = i < 0 || j < 0 || i >= NX || j >= NY ? -1 : nodeOfCell[j * NX + i];
         if (n < 0) continue;
         const [clat, clon] = cellCenter(i, j);
+        const b = seedByte(distM(g.areaLat[a], g.areaLon[a], clat, clon) * DETOUR + snapM[n], seedStep);
+        if (b === 255) continue; // te ver: geen startcel, zoals in het bestand
         seedNode[a * seedK + s] = n;
-        // afgerond op een stap en begrensd zoals in het bestand (export_bike_grid.py)
-        const d = distM(g.areaLat[a], g.areaLon[a], clat, clon) * DETOUR + snapM[n];
-        seedDist[a * seedK + s] = Math.min(254, Math.round(d / seedStep));
+        seedDist[a * seedK + s] = b;
       }
     }
   }
   return { nNode, cellOfNode, nodeOfCell, snapM, first, edge, step, lenTab, seedK, seedNode, seedDist, seedLen };
+}
+
+/** afstand halte → startcel (m) als byte in stappen van `step`, zoals seed_bytes in export_bike_grid.py;
+ *  255 = geen verbinding */
+export function seedByte(d: number, step: number): number {
+  const b = Math.round(d / step);
+  return b <= 254 ? b : 255;
 }
 
 /** Dijkstra-toestand, hergebruikt tussen berekeningen (scheelt geheugen en GC) */
