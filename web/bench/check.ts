@@ -8,6 +8,7 @@ import { loadBikeGrid, originAccess, rasterizeBike, type BikeGrid } from "../src
 import { csaPath, csaSearch, footpaths, loadTimetable } from "../src/csa";
 import { diffText, explainHtml, hoverHtml, type ExplainCtx } from "../src/explain";
 import { clockSec, fmtMin, footNote, inRange } from "../src/format";
+import { CELL, NX, ROW_SCALE, X0, Y0, mercX, mercY } from "../src/grid";
 import { applyDay, legs, loadDay, loadGraph, search, straightAccess, type Params } from "../src/router";
 import { DEFAULTS } from "../src/state";
 
@@ -43,6 +44,31 @@ function renumber(bg: BikeGrid): BikeGrid {
   }
   return { ...bg, nodeOfCell: bg.nodeOfCell.map(inv), cellOfNode: bg.cellOfNode.slice().reverse(),
     snapM: bg.snapM.slice().reverse(), first, edge, seedNode: bg.seedNode.map(inv) };
+}
+
+/** hetzelfde raster zonder de knopen in de cellen waar drop(cel) waar is, met hun kanten en startcellen:
+ *  zo ontstaan cellen met alleen in het andere raster een knoop, zoals bij fiets- en looptraster */
+function withoutCells(bg: BikeGrid, drop: (c: number) => boolean): BikeGrid {
+  const id = new Int32Array(bg.nNode).fill(-1);
+  let nNode = 0;
+  for (let n = 0; n < bg.nNode; n++) if (!drop(bg.cellOfNode[n])) id[n] = nNode++;
+  const nodeOfCell = bg.nodeOfCell.map((n) => (n < 0 ? -1 : id[n]));
+  const cellOfNode = new Int32Array(nNode), snapM = new Float32Array(nNode), first = new Uint32Array(nNode + 1);
+  const edges: number[] = [];
+  for (let n = 0; n < bg.nNode; n++) {
+    const u = id[n];
+    if (u < 0) continue;
+    const c = bg.cellOfNode[n];
+    cellOfNode[u] = c;
+    snapM[u] = bg.snapM[n];
+    for (let k = bg.first[n]; k < bg.first[n + 1]; k++) {
+      const x = bg.edge[k];
+      if (id[bg.nodeOfCell[c + bg.step[x >> 4]]] >= 0) edges.push(x);
+    }
+    first[u + 1] = edges.length;
+  }
+  return { ...bg, nNode, nodeOfCell, cellOfNode, snapM, first, edge: Uint8Array.from(edges),
+    seedNode: bg.seedNode.map((n) => (n < 0 ? -1 : id[n])) };
 }
 
 async function main() {
@@ -108,6 +134,28 @@ async function main() {
     let nDiff = 0;
     for (let c = 0; c < a.length; c++) if (a[c] !== b[c]) nDiff++;
     expect(`twee rasters, ${what}: cellen anders`, nDiff, 0);
+  }
+
+  // twee rasters met verschillende cellen: een cel met alleen een knoop in het raster van het eerste stuk
+  // (fiets bij vertrek, maar geen loopknoop) ligt ver van het vertrekpunt alleen aan het laatste stuk.
+  // Die mag geen gat worden: hij wordt aangevuld vanuit de buren, net als zonder tweede raster.
+  const dropped = (c: number) => ((c % NX) + Math.floor(c / NX)) % 7 === 0;
+  const sub = withoutCells(bike!, dropped);
+  const oi = Math.floor((mercX(UTRECHT.lon) - X0) / CELL), oj = Math.floor((mercY(UTRECHT.lat) - Y0) / CELL);
+  const far = (c: number) => Math.hypot((c % NX) - oi, Math.floor(c / NX) - oj) * CELL > 20000 / ROW_SCALE[oj];
+  for (const [what, p, start, end] of [
+    ["fiets bij vertrek, lopen bij aankomst", DEFAULTS, bike!, sub],
+    ["lopen bij vertrek, fiets bij aankomst", { ...DEFAULTS, bikeStart: false, bikeEnd: true }, bike!, sub],
+  ] as [string, Params, BikeGrid, BikeGrid][]) {
+    // het raster van het laatste stuk is `sub`; het eerste stuk heeft ook de weggelaten cellen
+    const two = p.bikeStart ? { bike: start, walk: end } : { bike: end, walk: start };
+    const one = { bike: end, walk: null };
+    const times = (gs: { bike: BikeGrid; walk: BikeGrid | null }) =>
+      rasterizeBike(gs, g, search(g, originAccess(gs, g, UTRECHT.lat, UTRECHT.lon, p), p), UTRECHT, p).time.slice();
+    const t1 = times(one), t2 = times(two);
+    let holes = 0;
+    for (let c = 0; c < t1.length; c++) if (dropped(c) && far(c) && t1[c] < Infinity && t2[c] === Infinity) holes++;
+    expect(`twee rasters met andere cellen, ${what}: gaten ver van het vertrekpunt`, holes, 0);
   }
 
   // echte vertrektijden: een route naar Groningen met kloktijden
