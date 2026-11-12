@@ -26,10 +26,13 @@ export interface BikeGrid {
   edge: Uint8Array;
   step: Int32Array;
   lenTab: Uint16Array;
-  // startcellen per halteplek: k = (2R+1)² knopen met de afstand halte → knoop; knoop -1 = geen
+  // startcellen per halteplek: de (2R+1)² = seedK cellen rond de cel van de halte (seedCell, -1 = buiten het
+  // raster), cel s op (seedDI[s], seedDJ[s]), aan de rand begrensd. De knoop volgt uit nodeOfCell (seedNodeAt).
   seedK: number;
-  seedNode: Int32Array;
-  // afstand halte → knoop in stappen, zoals in het bestand (1 byte per startcel); meters = seedLen[byte]
+  seedCell: Int32Array;
+  seedDI: Int8Array;
+  seedDJ: Int8Array;
+  // afstand halte → knoop in stappen, zoals in het bestand (1 byte per startcel, 255 = geen); meters = seedLen[byte]
   seedDist: Uint8Array;
   seedLen: Float32Array;
 }
@@ -136,46 +139,39 @@ async function loadGrid(url: string, want: string, g: Graph): Promise<BikeGrid |
     }
   }
 
-  // startcellen per halteplek, vooraf omgezet naar knopen
+  // startcellen per halteplek: alleen de cel van de halte en de afstanden; de knopen volgen uit nodeOfCell
   const w = 2 * seedR + 1, seedK = w * w;
-  const seedNode = new Int32Array(g.nArea * seedK).fill(-1);
-  const seedDist = new Uint8Array(g.nArea * seedK);
+  const seedDI = new Int8Array(seedK), seedDJ = new Int8Array(seedK);
+  for (let dj = -seedR, s = 0; dj <= seedR; dj++) for (let di = -seedR; di <= seedR; di++, s++) [seedDI[s], seedDJ[s]] = [di, dj];
+  const seedCell = new Int32Array(g.nArea);
+  for (let a = 0; a < g.nArea; a++) seedCell[a] = cellOf(g.areaLat[a], g.areaLon[a]);
+  const seedDist = new Uint8Array(g.nArea * seedK).fill(255);
   const seedLen = new Float32Array(256);
   for (let b = 0; b < 256; b++) seedLen[b] = b * seedStep;
-  for (let a = 0; a < nA; a++) {
-    const c0 = cellOf(g.areaLat[a], g.areaLon[a]);
-    if (c0 < 0) continue;
-    const oi = c0 % NX, oj = Math.floor(c0 / NX);
-    for (let dj = -seedR, s = 0; dj <= seedR; dj++) {
-      for (let di = -seedR; di <= seedR; di++, s++) {
-        const byte = seeds[a * seedK + s];
-        if (byte === 255) continue;
-        const i = Math.min(NX - 1, Math.max(0, oi + di)), j = Math.min(NY - 1, Math.max(0, oj + dj));
-        seedNode[a * seedK + s] = nodeOfCell[j * NX + i];
-        seedDist[a * seedK + s] = byte;
-      }
-    }
-  }
+  for (let a = 0; a < nA; a++) if (seedCell[a] >= 0) seedDist.set(seeds.subarray(a * seedK, (a + 1) * seedK), a * seedK);
   // halteplekken die er in bike.bin.gz nog niet waren (alleen in het weekend): zoals het vertrekpunt,
   // hemelsbreed × 1,3 naar de middens van de cellen eromheen, plus de snapafstand
   for (let a = nA; a < g.nArea; a++) {
-    const c0 = cellOf(g.areaLat[a], g.areaLon[a]);
+    const c0 = seedCell[a];
     if (c0 < 0) continue;
     const oi = c0 % NX, oj = Math.floor(c0 / NX);
-    for (let dj = -seedR, s = 0; dj <= seedR; dj++) {
-      for (let di = -seedR; di <= seedR; di++, s++) {
-        const i = oi + di, j = oj + dj;
-        const n = i < 0 || j < 0 || i >= NX || j >= NY ? -1 : nodeOfCell[j * NX + i];
-        if (n < 0) continue;
-        const [clat, clon] = cellCenter(i, j);
-        const b = seedByte(distM(g.areaLat[a], g.areaLon[a], clat, clon) * DETOUR + snapM[n], seedStep);
-        if (b === 255) continue; // te ver: geen startcel, zoals in het bestand
-        seedNode[a * seedK + s] = n;
-        seedDist[a * seedK + s] = b;
-      }
+    for (let s = 0; s < seedK; s++) {
+      const i = oi + seedDI[s], j = oj + seedDJ[s];
+      // buiten het raster: geen startcel (seedNodeAt zou de cel aan de rand begrenzen)
+      const n = i < 0 || j < 0 || i >= NX || j >= NY ? -1 : nodeOfCell[j * NX + i];
+      if (n < 0) continue;
+      const [clat, clon] = cellCenter(i, j);
+      seedDist[a * seedK + s] = seedByte(distM(g.areaLat[a], g.areaLon[a], clat, clon) * DETOUR + snapM[n], seedStep);
     }
   }
-  return { nNode, cellOfNode, nodeOfCell, snapM, first, edge, step, lenTab, seedK, seedNode, seedDist, seedLen };
+  return { nNode, cellOfNode, nodeOfCell, snapM, first, edge, step, lenTab, seedK, seedCell, seedDI, seedDJ, seedDist, seedLen };
+}
+
+/** de knoop van startcel s van de halte in cel c0 (aan de rand van het raster begrensd); -1 = geen knoop */
+function seedNodeAt(bg: BikeGrid, c0: number, s: number): number {
+  const i = Math.min(NX - 1, Math.max(0, (c0 % NX) + bg.seedDI[s]));
+  const j = Math.min(NY - 1, Math.max(0, Math.floor(c0 / NX) + bg.seedDJ[s]));
+  return bg.nodeOfCell[j * NX + i];
 }
 
 /** afstand halte → startcel (m) als byte in stappen van `step`, zoals seed_bytes in export_bike_grid.py;
@@ -316,11 +312,12 @@ export function originAccess(gs: Grids, g: Graph, lat: number, lon: number, p: P
 
   // naar de halteplekken: via hun startcellen (de afstand halte ↔ celknoop geldt beide kanten op)
   const init = new Float64Array(g.nArea).fill(Infinity);
-  const { seedK, seedNode, seedDist, seedLen } = bg;
+  const { seedK, seedCell, seedDist, seedLen } = bg;
   for (let a = 0; a < g.nArea; a++) {
     let any = false;
-    for (let k = a * seedK, end = k + seedK; k < end; k++) {
-      const n = seedNode[k];
+    for (let s = 0, k = a * seedK; s < seedK && seedCell[a] >= 0; s++, k++) {
+      if (seedDist[k] === 255) continue;
+      const n = seedNodeAt(bg, seedCell[a], s);
       if (n < 0) continue;
       any = true;
       const d = seedLen[seedDist[k]];
@@ -348,14 +345,15 @@ export function rasterizeBike(gs: Grids, g: Graph, s: Search, origin: { lat: num
   const { startV, startMax, endV: v, endMax: bikeMax } = legs(p);
   const tMax = p.tMaxMin * 60;
   r.reset(tMax);
-  const { seedK, seedNode, seedDist, seedLen } = bg;
+  const { seedK, seedCell, seedDist, seedLen } = bg;
   const out = newRaster();
   for (let a = 0; a < g.nArea; a++) {
     const t = s.dist[a];
     if (t >= tMax) continue;
     let any = false;
-    for (let k = a * seedK, end = k + seedK; k < end; k++) {
-      const n = seedNode[k];
+    for (let q = 0, k = a * seedK; q < seedK && seedCell[a] >= 0; q++, k++) {
+      if (seedDist[k] === 255) continue;
+      const n = seedNodeAt(bg, seedCell[a], q);
       if (n < 0) continue;
       any = true;
       const d = seedLen[seedDist[k]];

@@ -44,7 +44,7 @@ function renumber(bg: BikeGrid): BikeGrid {
     first[u + 1] = k;
   }
   return { ...bg, nodeOfCell: bg.nodeOfCell.map(inv), cellOfNode: bg.cellOfNode.slice().reverse(),
-    snapM: bg.snapM.slice().reverse(), first, edge, seedNode: bg.seedNode.map(inv) };
+    snapM: bg.snapM.slice().reverse(), first, edge };
 }
 
 /** hetzelfde raster zonder de knopen in de cellen waar drop(cel) waar is, met hun kanten en startcellen:
@@ -68,8 +68,7 @@ function withoutCells(bg: BikeGrid, drop: (c: number) => boolean): BikeGrid {
     }
     first[u + 1] = edges.length;
   }
-  return { ...bg, nNode, nodeOfCell, cellOfNode, snapM, first, edge: Uint8Array.from(edges),
-    seedNode: bg.seedNode.map((n) => (n < 0 ? -1 : id[n])) };
+  return { ...bg, nNode, nodeOfCell, cellOfNode, snapM, first, edge: Uint8Array.from(edges) };
 }
 
 /** hetzelfde raster, maar zonder kanten van en naar de cellen waar cut(cel) waar is: die knopen blijven
