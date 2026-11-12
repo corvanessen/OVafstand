@@ -29,7 +29,9 @@ export interface BikeGrid {
   // startcellen per halteplek: k = (2R+1)² knopen met de afstand halte → knoop; knoop -1 = geen
   seedK: number;
   seedNode: Int32Array;
-  seedDist: Float32Array;
+  // afstand halte → knoop in stappen, zoals in het bestand (1 byte per startcel); meters = seedLen[byte]
+  seedDist: Uint8Array;
+  seedLen: Float32Array;
 }
 
 /** het fietsraster en, als het er is, het looptraster */
@@ -137,7 +139,9 @@ async function loadGrid(url: string, want: string, g: Graph): Promise<BikeGrid |
   // startcellen per halteplek, vooraf omgezet naar knopen
   const w = 2 * seedR + 1, seedK = w * w;
   const seedNode = new Int32Array(g.nArea * seedK).fill(-1);
-  const seedDist = new Float32Array(g.nArea * seedK);
+  const seedDist = new Uint8Array(g.nArea * seedK);
+  const seedLen = new Float32Array(256);
+  for (let b = 0; b < 256; b++) seedLen[b] = b * seedStep;
   for (let a = 0; a < nA; a++) {
     const c0 = cellOf(g.areaLat[a], g.areaLon[a]);
     if (c0 < 0) continue;
@@ -148,7 +152,7 @@ async function loadGrid(url: string, want: string, g: Graph): Promise<BikeGrid |
         if (byte === 255) continue;
         const i = Math.min(NX - 1, Math.max(0, oi + di)), j = Math.min(NY - 1, Math.max(0, oj + dj));
         seedNode[a * seedK + s] = nodeOfCell[j * NX + i];
-        seedDist[a * seedK + s] = byte * seedStep;
+        seedDist[a * seedK + s] = byte;
       }
     }
   }
@@ -165,11 +169,13 @@ async function loadGrid(url: string, want: string, g: Graph): Promise<BikeGrid |
         if (n < 0) continue;
         const [clat, clon] = cellCenter(i, j);
         seedNode[a * seedK + s] = n;
-        seedDist[a * seedK + s] = distM(g.areaLat[a], g.areaLon[a], clat, clon) * DETOUR + snapM[n];
+        // afgerond op een stap en begrensd zoals in het bestand (export_bike_grid.py)
+        const d = distM(g.areaLat[a], g.areaLon[a], clat, clon) * DETOUR + snapM[n];
+        seedDist[a * seedK + s] = Math.min(254, Math.round(d / seedStep));
       }
     }
   }
-  return { nNode, cellOfNode, nodeOfCell, snapM, first, edge, step, lenTab, seedK, seedNode, seedDist };
+  return { nNode, cellOfNode, nodeOfCell, snapM, first, edge, step, lenTab, seedK, seedNode, seedDist, seedLen };
 }
 
 /** Dijkstra-toestand, hergebruikt tussen berekeningen (scheelt geheugen en GC) */
@@ -303,15 +309,16 @@ export function originAccess(gs: Grids, g: Graph, lat: number, lon: number, p: P
 
   // naar de halteplekken: via hun startcellen (de afstand halte ↔ celknoop geldt beide kanten op)
   const init = new Float64Array(g.nArea).fill(Infinity);
-  const { seedK, seedNode, seedDist } = bg;
+  const { seedK, seedNode, seedDist, seedLen } = bg;
   for (let a = 0; a < g.nArea; a++) {
     let any = false;
     for (let k = a * seedK, end = k + seedK; k < end; k++) {
       const n = seedNode[k];
       if (n < 0) continue;
       any = true;
-      if (r.bike[n] + seedDist[k] > directMax) continue; // ook waar r.time Infinity is: dan geeft min niets
-      init[a] = Math.min(init[a], r.time[n] + seedDist[k] / v);
+      const d = seedLen[seedDist[k]];
+      if (r.bike[n] + d > directMax) continue; // ook waar r.time Infinity is: dan geeft min niets
+      init[a] = Math.min(init[a], r.time[n] + d / v);
     }
     if (!any) {
       // halte zonder startcellen (buiten het fietsraster): hemelsbreed × 1,3, zoals vroeger
@@ -334,7 +341,7 @@ export function rasterizeBike(gs: Grids, g: Graph, s: Search, origin: { lat: num
   const { startV, startMax, endV: v, endMax: bikeMax } = legs(p);
   const tMax = p.tMaxMin * 60;
   r.reset(tMax);
-  const { seedK, seedNode, seedDist } = bg;
+  const { seedK, seedNode, seedDist, seedLen } = bg;
   const out = newRaster();
   for (let a = 0; a < g.nArea; a++) {
     const t = s.dist[a];
@@ -344,7 +351,8 @@ export function rasterizeBike(gs: Grids, g: Graph, s: Search, origin: { lat: num
       const n = seedNode[k];
       if (n < 0) continue;
       any = true;
-      if (seedDist[k] <= bikeMax) r.seed(n, t + seedDist[k] / v, seedDist[k], a);
+      const d = seedLen[seedDist[k]];
+      if (d <= bikeMax) r.seed(n, t + d / v, d, a);
     }
     if (!any) cone(out, mercX(g.areaLon[a]), mercY(g.areaLat[a]), t, bikeMax, v, a, tMax);
   }
