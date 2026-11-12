@@ -54,9 +54,16 @@ def shift(arr, di, dj, fill=np.inf):
 def seed_bytes(seed, ok):
     """startcel-afstanden (m) → bytes in stappen van SEED_STEP; 255 = geen verbinding.
     Verder dan 254 stappen is ook geen verbinding: begrenzen zou de afstand te kort maken
-    (een cel over het water met de brug ver weg), en dan ontstaat een sluiproute."""
-    b = np.round(np.where(ok, seed, np.inf) / SEED_STEP)
-    return np.where(b <= 254, b, 255).astype(np.uint8)
+    (een cel over het water met de brug ver weg), en dan ontstaat een sluiproute.
+    Uitzondering: heeft een halte alleen verre startcellen, dan houdt hij de dichtstbijzijnde (als 254).
+    Zonder startcel valt de halte in de browser terug op een kegel (hemelsbreed), en die negeert water.
+    Een half rondt naar boven af, net als seedByte (Math.round) in bikegrid.ts."""
+    b = np.floor(np.where(ok, seed, np.inf) / SEED_STEP + 0.5)
+    out = np.where(b <= 254, b, 255).astype(np.uint8)
+    only_far = ok.any(1) & (out == 255).all(1)
+    rows = np.flatnonzero(only_far)
+    out[rows, np.argmin(np.where(ok[rows], seed[rows], np.inf), 1)] = 254
+    return out
 
 
 def main():
@@ -118,7 +125,8 @@ def main():
         seed_ok[:, m] &= node[cj, ci]
     seeds = seed_bytes(seed, seed_ok)
     n_area = len(seeds)
-    print(f"halteplekken: {n_area}, zonder enige startcel: {(~seed_ok.any(1)).sum()}")
+    print(f"halteplekken: {n_area}, zonder enige startcel: {(seeds == 255).all(1).sum()} "
+          f"(met alleen verre startcellen, de dichtstbijzijnde gehouden: {(seed_ok.any(1) & ~(seed_ok & (seeds < 254)).any(1)).sum()})")
 
     # 5. schrijven
     edges = np.ascontiguousarray(lv.transpose(1, 2, 0)).reshape(-1)     # [cel][richting]
