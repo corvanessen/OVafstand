@@ -199,7 +199,7 @@ Het vertrekpunt en de instellingen staan in de hash, bijvoorbeeld `#52.08940,5.1
 
 Een waarde die het invoerveld niet kan tonen, wordt genegeerd. Oude links met alleen `#lat,lon,naam` werken nog.
 
-`og.png` (het deelvoorbeeld, 1200 × 630) is een screenshot van de site vanaf Utrecht C, met de standaardinstellingen. Na een grote wijziging van de kaart maak je hem opnieuw: `npm --prefix web run build`, dan `npm --prefix web run preview` in een tweede terminal, en `node web/scripts/og.mjs`. Dat script opent Chrome headless, wacht op de kaart met het fietsraster, verbergt in het paneel alles behalve de titel, het vertrekpunt en de legenda, en zoomt uit tot heel NL.
+`og.png` (het deelvoorbeeld, 1200 × 630) is een screenshot van de site vanaf Utrecht C, met de standaardinstellingen. Na een grote wijziging van de kaart maak je hem opnieuw: `npm --prefix web run build`, dan `npm --prefix web run preview` in een tweede terminal, en `node web/scripts/og.mjs`. Dat script opent Chrome headless, wacht op de kaart met het fiets- en looptraster, verbergt in het paneel alles behalve de titel, het vertrekpunt en de legenda, en zoomt uit tot heel NL.
 
 ### Bezoekers
 
