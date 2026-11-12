@@ -9,6 +9,7 @@ import { csaPath, csaSearch, footpaths, loadTimetable } from "../src/csa";
 import { diffText, explainHtml, hoverHtml, type ExplainCtx } from "../src/explain";
 import { clockSec, fmtMin, footNote, inRange } from "../src/format";
 import { CELL, NX, ROW_SCALE, X0, Y0, mercX, mercY } from "../src/grid";
+import { VIA_DIRECT } from "../src/raster";
 import { applyDay, legs, loadDay, loadGraph, search, straightAccess, type Params } from "../src/router";
 import { DEFAULTS } from "../src/state";
 
@@ -69,6 +70,24 @@ function withoutCells(bg: BikeGrid, drop: (c: number) => boolean): BikeGrid {
   }
   return { ...bg, nNode, nodeOfCell, cellOfNode, snapM, first, edge: Uint8Array.from(edges),
     seedNode: bg.seedNode.map((n) => (n < 0 ? -1 : id[n])) };
+}
+
+/** hetzelfde raster, maar zonder kanten van en naar de cellen waar cut(cel) waar is: die knopen blijven
+ *  bestaan, maar zijn onbereikbaar (zoals een stuk weg achter water) */
+function cutCells(bg: BikeGrid, cut: (c: number) => boolean): BikeGrid {
+  const first = new Uint32Array(bg.nNode + 1);
+  const edges: number[] = [];
+  for (let n = 0; n < bg.nNode; n++) {
+    const c = bg.cellOfNode[n];
+    if (!cut(c)) {
+      for (let k = bg.first[n]; k < bg.first[n + 1]; k++) {
+        const x = bg.edge[k];
+        if (!cut(c + bg.step[x >> 4])) edges.push(x);
+      }
+    }
+    first[n + 1] = edges.length;
+  }
+  return { ...bg, first, edge: Uint8Array.from(edges) };
 }
 
 async function main() {
@@ -141,26 +160,38 @@ async function main() {
     expect(`twee rasters, ${what}: cellen anders`, nDiff, 0);
   }
 
-  // twee rasters met verschillende cellen: een cel met alleen een knoop in het raster van het eerste stuk
-  // (fiets bij vertrek, maar geen loopknoop) ligt ver van het vertrekpunt alleen aan het laatste stuk.
-  // Die mag geen gat worden: hij wordt aangevuld vanuit de buren, net als zonder tweede raster.
+  // twee rasters met verschillende cellen: `sub` is het raster van het laatste stuk zonder een deel van de
+  // cellen; het eerste stuk (`first`) heeft daar wel een knoop. Rond het vertrekpunt (tot 3 km) zijn in `first`
+  // de kanten van die cellen weggeknipt: knopen die het eerste stuk nooit bereikt (een barrière, zoals water).
   const dropped = (c: number) => ((c % NX) + Math.floor(c / NX)) % 7 === 0;
   const sub = withoutCells(bike!, dropped);
   const oi = Math.floor((mercX(UTRECHT.lon) - X0) / CELL), oj = Math.floor((mercY(UTRECHT.lat) - Y0) / CELL);
-  const far = (c: number) => Math.hypot((c % NX) - oi, Math.floor(c / NX) - oj) * CELL > 20000 / ROW_SCALE[oj];
-  for (const [what, p, start, end] of [
-    ["fiets bij vertrek, lopen bij aankomst", DEFAULTS, bike!, sub],
-    ["lopen bij vertrek, fiets bij aankomst", { ...DEFAULTS, bikeStart: false, bikeEnd: true }, bike!, sub],
-  ] as [string, Params, BikeGrid, BikeGrid][]) {
-    // het raster van het laatste stuk is `sub`; het eerste stuk heeft ook de weggelaten cellen
-    const two = p.bikeStart ? { bike: start, walk: end } : { bike: end, walk: start };
-    const one = { bike: end, walk: null };
-    const times = (gs: { bike: BikeGrid; walk: BikeGrid | null }) =>
-      rasterizeBike(gs, g, search(g, originAccess(gs, g, UTRECHT.lat, UTRECHT.lon, p), p), UTRECHT, p).time.slice();
-    const t1 = times(one), t2 = times(two);
+  const km = (c: number) => (Math.hypot((c % NX) - oi, Math.floor(c / NX) - oj) * CELL * ROW_SCALE[oj]) / 1000;
+  // buiten de 5 × 5 cellen waar het vertrekpunt rechtstreeks start (ORIGIN_R = 2), tot 3 km
+  const cut = (c: number) => dropped(c) && Math.max(Math.abs((c % NX) - oi), Math.abs(Math.floor(c / NX) - oj)) > 2 && km(c) < 3;
+  const first = cutCells(bike!, cut);
+  for (const [what, p] of [
+    ["fiets bij vertrek, lopen bij aankomst", DEFAULTS],
+    ["lopen bij vertrek, fiets bij aankomst", { ...DEFAULTS, bikeStart: false, bikeEnd: true }],
+  ] as [string, Params][]) {
+    const gs = p.bikeStart ? { bike: first, walk: sub } : { bike: sub, walk: first };
+    const r = rasterizeBike(gs, g, search(g, originAccess(gs, g, UTRECHT.lat, UTRECHT.lon, p), p), UTRECHT, p);
+    // 1. een cel met alleen een knoop van het eerste stuk wordt aangevuld vanuit een buur die vanaf een halte
+    //    komt, net als zonder tweede raster: geen gat, ook niet dichter bij het vertrekpunt dan startMax
     let holes = 0;
-    for (let c = 0; c < t1.length; c++) if (dropped(c) && far(c) && t1[c] < Infinity && t2[c] === Infinity) holes++;
-    expect(`twee rasters met andere cellen, ${what}: gaten ver van het vertrekpunt`, holes, 0);
+    for (let c = NX + 1; c < r.time.length - NX - 1; c++) {
+      const i = c % NX;
+      if (i === 0 || i === NX - 1 || !dropped(c) || cut(c) || r.time[c] < Infinity) continue; // randkolom: c ± 1 is de andere kant
+      for (const d of [-NX - 1, -NX, -NX + 1, -1, 1, NX - 1, NX, NX + 1]) {
+        // buur: een bereikte knoop van het laatste stuk, op de kaart (opgevulde buren tellen niet: die stoppen na FILL_M)
+        if (sub.nodeOfCell[c + d] >= 0 && r.time[c + d] < p.tMaxMin && r.via[c + d] !== VIA_DIRECT) { holes++; break; }
+      }
+    }
+    expect(`twee rasters met andere cellen, ${what}: gaten naast een cel vanaf een halte`, holes, 0);
+    // 2. een knoop die het eerste stuk niet bereikt, krijgt nooit een tijd "vanaf het vertrekpunt" via de buren
+    let leaks = 0;
+    for (let c = 0; c < r.time.length; c++) if (cut(c) && r.via[c] === VIA_DIRECT) leaks++;
+    expect(`twee rasters met andere cellen, ${what}: onbereikte knopen gevuld vanaf het vertrekpunt`, leaks, 0);
   }
 
   // echte vertrektijden: een route naar Groningen met kloktijden

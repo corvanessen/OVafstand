@@ -391,7 +391,7 @@ export function rasterizeBike(gs: Grids, g: Graph, s: Search, origin: { lat: num
     }
   }
   if (origin && !originOnGrid) cone(out, mercX(origin.lon), mercY(origin.lat), 0, startMax, startV, VIA_DIRECT, tMax);
-  fillGaps(og, bg, out, startV, v, origin, startMax);
+  fillGaps(og, bg, out, startV, v);
   return out;
 }
 
@@ -401,22 +401,14 @@ let fillDist: Float32Array | null = null;
  *  (8 buren, hemelsbreed × DETOUR), tot FILL_M van de dichtstbijzijnde gevulde cel.
  *  Het tempo hangt af van het stuk: vanaf het vertrekpunt (vStart) of vanaf een halte (vEnd).
  *  Een knoop die niet bereikt is, wordt niet gevuld (anders alsnog een sluiproute over water of spoor).
- *  Dat geldt voor het raster van het laatste stuk (bg) overal, en voor dat van het eerste stuk (og) alleen
- *  binnen startMax hemelsbreed van het vertrekpunt: verder weg kan dat stuk een cel nooit bereiken, en een
- *  cel met alleen daar een knoop (bijv. een fietspad zonder voetpad) hoort bij het laatste stuk.
+ *  Een cel met een knoop van het laatste stuk (bg) wordt dus nooit gevuld. Een cel met alleen een knoop van het
+ *  eerste stuk (og, bijv. een fietspad zonder voetpad) wordt alleen gevuld vanuit buren die vanaf een halte
+ *  komen: het eerste stuk heeft hem niet bereikt, maar het laatste stuk kent er geen knoop.
  *  Water wordt ook gevuld, maar dat valt op de kaart onder het watermasker. */
-function fillGaps(og: BikeGrid, bg: BikeGrid, r: Raster, vStart: number, vEnd: number,
-  origin: { lat: number; lon: number } | null, startMax: number) {
+function fillGaps(og: BikeGrid, bg: BikeGrid, r: Raster, vStart: number, vEnd: number) {
   const { time, via } = r;
   const n1 = og.nodeOfCell, n2 = bg.nodeOfCell;
   const N = NX * NY;
-  // het gebied waar het eerste stuk kan komen: cellen binnen startMax van het vertrekpunt
-  const ox = origin ? (mercX(origin.lon) - X0) / CELL - 0.5 : 0, oy = origin ? (mercY(origin.lat) - Y0) / CELL - 0.5 : 0;
-  const nearOrigin = (i: number, j: number) => {
-    if (!origin) return false;
-    const m = CELL * ROW_SCALE[j]; // echte meters per cel in deze rij
-    return ((i - ox) * m) ** 2 + ((j - oy) * m) ** 2 <= startMax * startMax;
-  };
   fillDist ??= new Float32Array(N);
   const fd = fillDist;
   // bron = elke cel met een tijd; knopen zonder tijd zijn niet bereikt en worden ook niet aangevuld
@@ -433,19 +425,19 @@ function fillGaps(og: BikeGrid, bg: BikeGrid, r: Raster, vStart: number, vEnd: n
       for (let ii = 0; ii < NX; ii++) {
         const i = fwd ? ii : NX - 1 - ii;
         const c = j * NX + i;
-        if (fd[c] === 0 || n2[c] >= 0 || (n1[c] >= 0 && n1 !== n2 && nearOrigin(i, j))) continue; // niet bereikte knoop
+        if (fd[c] === 0 || n2[c] >= 0) continue; // een niet bereikte knoop van het laatste stuk: niet vullen
+        const stopsOnly = n1[c] >= 0; // alleen een knoop van het eerste stuk: niet vanaf het vertrekpunt vullen
         let bestD = fd[c], bestN = -1;
-        const di = fwd ? -1 : 1; // eerdere kolom in deze pass
+        const near = (n: number, s: number) => {
+          if (fd[n] + s < bestD && !(stopsOnly && via[n] === VIA_DIRECT)) { bestD = fd[n] + s; bestN = n; }
+        };
         // de buren die in deze pass al aan de beurt waren
-        if (fwd ? i > 0 : i < NX - 1) {
-          const n = c + di;
-          if (fd[n] + s1 < bestD) { bestD = fd[n] + s1; bestN = n; }
-        }
+        if (fwd ? i > 0 : i < NX - 1) near(c + (fwd ? -1 : 1), s1);
         if (hasPrev) {
           const r0 = c + dj * NX;
-          if (fd[r0] + s1 < bestD) { bestD = fd[r0] + s1; bestN = r0; }
-          if (i > 0 && fd[r0 - 1] + s2 < bestD) { bestD = fd[r0 - 1] + s2; bestN = r0 - 1; }
-          if (i < NX - 1 && fd[r0 + 1] + s2 < bestD) { bestD = fd[r0 + 1] + s2; bestN = r0 + 1; }
+          near(r0, s1);
+          if (i > 0) near(r0 - 1, s2);
+          if (i < NX - 1) near(r0 + 1, s2);
         }
         if (bestN < 0 || bestD > FILL_M) continue;
         fd[c] = bestD;
