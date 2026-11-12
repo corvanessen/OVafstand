@@ -12,3 +12,5 @@ web/dist/
 config.php
 .env*
 !.env.example
+!.env.sample
+!.env.dist

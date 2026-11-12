@@ -181,7 +181,7 @@ async function main() {
     let holes = 0;
     for (let c = NX + 1; c < r.time.length - NX - 1; c++) {
       const i = c % NX;
-      if (i === 0 || i === NX - 1 || !dropped(c) || cut(c) || r.time[c] < Infinity) continue; // randkolom: c ± 1 is de andere kant
+      if (i === 0 || i === NX - 1 || !dropped(c) || r.time[c] < Infinity) continue; // randkolom: c ± 1 is de andere kant
       for (const d of [-NX - 1, -NX, -NX + 1, -1, 1, NX - 1, NX, NX + 1]) {
         // buur: een bereikte knoop van het laatste stuk, op de kaart (opgevulde buren tellen niet: die stoppen na FILL_M)
         if (sub.nodeOfCell[c + d] >= 0 && r.time[c + d] < p.tMaxMin && r.via[c + d] !== VIA_DIRECT) { holes++; break; }

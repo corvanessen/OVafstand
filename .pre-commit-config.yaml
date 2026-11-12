@@ -21,7 +21,7 @@ repos:
         name: echte configuratie hoort niet in git (alleen voorbeeldbestanden)
         entry: echte configuratie hoort niet in git; zet geheimen buiten de repo
         language: fail
-        files: (^|/)(config\.php|\.env(\..*)?)$
+        files: (^|/)(config\.php|\.env[^/]*)$ # dezelfde namen als .env* in .gitignore, ook .envrc
         exclude: (^|/)\.env\.(example|sample|dist)$
       - id: typecheck
         name: TypeScript (tsc --noEmit)
